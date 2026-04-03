@@ -25,6 +25,9 @@ HERO_ALIASES       = load_config("hero_aliases.json")
 SCENARIO_MODULARS         = load_config("scenario_modulars.json")
 SCENARIO_DEFAULT_MODULARS = load_config("scenario_default_modulars.json")
 
+# Nur Schwierigkeitsgrad-Modulars — gelten nicht als echte Modularauswahl
+DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "expert ii"}
+
 def find_all_hero_positions(text_lower, heroes):
     """Find all (pos, hero) occurrences for every hero in the text."""
     all_positions = []
@@ -51,6 +54,14 @@ def remove_covered_matches(positions):
         if not covered:
             result.append((pos, hero))
     return result
+
+def count_modular(mod, modular_counts, matched_in_comments, counted_this_play, standard_found_ref):
+    """Zählt ein Modular und aktualisiert alle Tracking-Strukturen."""
+    modular_counts[mod] = modular_counts.get(mod, 0) + 1
+    matched_in_comments.add(mod.lower())
+    counted_this_play.append(mod)
+    if mod in ["Standard", "Standard II", "Standard III"]:
+        standard_found_ref[0] = True
 
 def find_longest_prefix_match(text, candidates):
     """Find the candidate whose name is the longest prefix match for text (case-insensitive)."""
@@ -204,6 +215,7 @@ if __name__ == "__main__":
     scenario_counts["unknown scenario"] = 0
 
     modular_counts = {mod: 0 for mod in MODULARS}
+    scenario_combo_counts = {}  # (scenario, combo_tuple) -> count
 
     # Durch alle geladenen Partien gehen und die matches zählen
     for play in all_plays:
@@ -221,9 +233,11 @@ if __name__ == "__main__":
             unknown_scenarios.append((play["date"], play["scenario"], play["comments"]))
 
         # Suchen nach Modulars, bis keine mehr gefunden wurden
-        modular_found = True
-        standard_found = False
-        matched_in_comments = set()  # Modulars, die explizit in den Comments stehen
+        modular_found       = True
+        standard_found_ref  = [False]
+        matched_in_comments = set()   # Lowercase-Set für Deduplizierung
+        counted_this_play   = []      # Originalnamen in Reihenfolge der Zählung
+
         while modular_found:
             modular_found = False
             matched_modular = find_longest_prefix_match(scenario_clean, MODULARS)
@@ -231,40 +245,37 @@ if __name__ == "__main__":
                 modular_found = True
 
             if matched_modular:
-                modular_counts[matched_modular] += 1
-                matched_in_comments.add(matched_modular.lower())
+                count_modular(matched_modular, modular_counts, matched_in_comments, counted_this_play, standard_found_ref)
                 scenario_clean = scenario_clean[len(matched_modular):].strip()
-                if matched_modular in ["Standard", "Standard II", "Standard III"]:
-                    standard_found = True
 
             if not matched_modular and len(scenario_clean) > 0:
                 unknown_modulars.append((play["date"], scenario_clean, play["comments"]))
 
-        # Default-Modulars: nur wenn NICHTS im Kommentar stand
-        if matched_scenario and not matched_in_comments:
+        # Default-Modulars: wenn nichts oder nur Schwierigkeitsgrad-Modulars im Kommentar standen
+        if matched_scenario and matched_in_comments.issubset(DIFFICULTY_MODULARS):
             if matched_scenario in SCENARIO_DEFAULT_MODULARS:
                 for def_mod in SCENARIO_DEFAULT_MODULARS[matched_scenario]:
                     if def_mod.lower() not in matched_in_comments:
-                        modular_counts[def_mod] = modular_counts.get(def_mod, 0) + 1
-                        matched_in_comments.add(def_mod.lower())
-                        if def_mod in ["Standard", "Standard II", "Standard III"]:
-                            standard_found = True
+                        count_modular(def_mod, modular_counts, matched_in_comments, counted_this_play, standard_found_ref)
 
         # Automatisch inkludierte Modulars: immer ergänzen (sofern nicht schon gezählt)
         if matched_scenario and matched_scenario in SCENARIO_MODULARS:
             for auto_mod in SCENARIO_MODULARS[matched_scenario]:
                 if auto_mod.lower() not in matched_in_comments:
-                    modular_counts[auto_mod] = modular_counts.get(auto_mod, 0) + 1
-                    matched_in_comments.add(auto_mod.lower())
-                    if auto_mod in ["Standard", "Standard II", "Standard III"]:
-                        standard_found = True
+                    count_modular(auto_mod, modular_counts, matched_in_comments, counted_this_play, standard_found_ref)
 
         # Fehlende Modulars: nur wenn nach beiden Schritten immer noch nichts gezählt wurde
         if matched_scenario and not matched_in_comments:
             missing_modulars.append((play["date"], matched_scenario, play["comments"]))
 
-        if not standard_found:
-            modular_counts["Standard"] += 1
+        if not standard_found_ref[0]:
+            count_modular("Standard", modular_counts, matched_in_comments, counted_this_play, standard_found_ref)
+
+        # Kombinations-Zähler aktualisieren
+        if matched_scenario and counted_this_play:
+            combo = tuple(sorted(counted_this_play))
+            key = (matched_scenario, combo)
+            scenario_combo_counts[key] = scenario_combo_counts.get(key, 0) + 1
 
     # Sortieren nach Anzahl Partien (absteigend)
     sorted_stats = sorted(
@@ -295,6 +306,19 @@ if __name__ == "__main__":
         writer.writerows(sorted_stats)
 
     print(f"Statistik gespeichert als: {OUTFILE_STATS}")
+
+    # Szenario × Modularkombination CSV
+    scenario_order = {s: i for i, s in enumerate(SCENARIOS)}
+    OUTFILE_COMBOS = "marvel_champions_scenario_modular_combos.csv"
+    with open(OUTFILE_COMBOS, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=';')
+        writer.writerow(["scenario", "modulars", "count"])
+        for (scenario, combo), count in sorted(
+            scenario_combo_counts.items(),
+            key=lambda x: (scenario_order.get(x[0][0], 9999), -x[1])
+        ):
+            writer.writerow([scenario, " + ".join(combo), count])
+    print(f"Statistik gespeichert als: {OUTFILE_COMBOS}")
 
     # --- HERO-STATISTIK --- #
 
