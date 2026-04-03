@@ -275,6 +275,7 @@ if __name__ == "__main__":
         HERO_ALIASES.get(h, h) for h in HEROES
     ))
     hero_counts = {hero: 0 for hero in canonical_hero_names}
+    hero_first_played = {}  # canonical_hero -> earliest date string
 
     # Kombinationen (Held, Aspekt)
     hero_aspect_counts = {}   # key = (canonical_hero, aspect)
@@ -310,6 +311,9 @@ if __name__ == "__main__":
 
             canonical = HERO_ALIASES.get(hero, hero)
             hero_counts[canonical] += 1
+            date = play["date"] or ""
+            if date and (canonical not in hero_first_played or date < hero_first_played[canonical]):
+                hero_first_played[canonical] = date
 
             next_hero_pos = hero_positions[idx + 1][0] if idx + 1 < len(hero_positions) else float('inf')
 
@@ -329,10 +333,10 @@ if __name__ == "__main__":
     # CSV: Gesamtzahl pro Held
     with open("heroes_total.csv", "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, delimiter=";")
-        writer.writerow(["Hero", "Count"])
+        writer.writerow(["Hero", "Count", "First Played"])
 
         for hero, count in sorted(hero_counts.items(), key=lambda x: x[1], reverse=True):
-            writer.writerow([hero, count])
+            writer.writerow([hero, count, hero_first_played.get(hero, "")])
 
     print("CSV geschrieben: heroes_total.csv")
 
