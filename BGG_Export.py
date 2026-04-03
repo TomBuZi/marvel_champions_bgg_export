@@ -21,7 +21,9 @@ HEROES = load_config("heroes.json")
 ASPECTS = load_config("aspects.json")
 SCENARIOS = load_config("scenarios.json")
 MODULARS = load_config("modulars.json")
-HERO_ALIASES = load_config("hero_aliases.json")
+HERO_ALIASES       = load_config("hero_aliases.json")
+SCENARIO_MODULARS         = load_config("scenario_modulars.json")
+SCENARIO_DEFAULT_MODULARS = load_config("scenario_default_modulars.json")
 
 def find_all_hero_positions(text_lower, heroes):
     """Find all (pos, hero) occurrences for every hero in the text."""
@@ -161,6 +163,7 @@ if __name__ == "__main__":
     unknown_aspects   = []  # (date, raw_text)
     unknown_scenarios = []  # (date, raw_text)
     unknown_modulars  = []  # (date, raw_text)
+    missing_modulars  = []  # (date, scenario) — bekanntes Szenario, kein Modular im Kommentar
 
     while True:
         print(f"Lade Seite {page} ...")
@@ -215,11 +218,12 @@ if __name__ == "__main__":
 
         if not matched_scenario:
             scenario_counts["unknown scenario"] += 1
-            unknown_scenarios.append((play["date"], play["scenario"]))
+            unknown_scenarios.append((play["date"], play["scenario"], play["comments"]))
 
         # Suchen nach Modulars, bis keine mehr gefunden wurden
         modular_found = True
         standard_found = False
+        matched_in_comments = set()  # Modulars, die explizit in den Comments stehen
         while modular_found:
             modular_found = False
             matched_modular = find_longest_prefix_match(scenario_clean, MODULARS)
@@ -228,12 +232,36 @@ if __name__ == "__main__":
 
             if matched_modular:
                 modular_counts[matched_modular] += 1
+                matched_in_comments.add(matched_modular.lower())
                 scenario_clean = scenario_clean[len(matched_modular):].strip()
                 if matched_modular in ["Standard", "Standard II", "Standard III"]:
                     standard_found = True
 
             if not matched_modular and len(scenario_clean) > 0:
-                unknown_modulars.append((play["date"], scenario_clean))
+                unknown_modulars.append((play["date"], scenario_clean, play["comments"]))
+
+        # Default-Modulars: nur wenn NICHTS im Kommentar stand
+        if matched_scenario and not matched_in_comments:
+            if matched_scenario in SCENARIO_DEFAULT_MODULARS:
+                for def_mod in SCENARIO_DEFAULT_MODULARS[matched_scenario]:
+                    if def_mod.lower() not in matched_in_comments:
+                        modular_counts[def_mod] = modular_counts.get(def_mod, 0) + 1
+                        matched_in_comments.add(def_mod.lower())
+                        if def_mod in ["Standard", "Standard II", "Standard III"]:
+                            standard_found = True
+
+        # Automatisch inkludierte Modulars: immer ergänzen (sofern nicht schon gezählt)
+        if matched_scenario and matched_scenario in SCENARIO_MODULARS:
+            for auto_mod in SCENARIO_MODULARS[matched_scenario]:
+                if auto_mod.lower() not in matched_in_comments:
+                    modular_counts[auto_mod] = modular_counts.get(auto_mod, 0) + 1
+                    matched_in_comments.add(auto_mod.lower())
+                    if auto_mod in ["Standard", "Standard II", "Standard III"]:
+                        standard_found = True
+
+        # Fehlende Modulars: nur wenn nach beiden Schritten immer noch nichts gezählt wurde
+        if matched_scenario and not matched_in_comments:
+            missing_modulars.append((play["date"], matched_scenario, play["comments"]))
 
         if not standard_found:
             modular_counts["Standard"] += 1
@@ -291,7 +319,7 @@ if __name__ == "__main__":
         hero_positions.sort()
 
         if not hero_positions:
-            unknown_heroes.append((play["date"], text))
+            unknown_heroes.append((play["date"], text, play["comments"]))
             continue
 
         # Aspekte mit Positionen finden
@@ -302,7 +330,7 @@ if __name__ == "__main__":
                 aspect_positions.append((pos, asp))
 
         if not aspect_positions:
-            unknown_aspects.append((play["date"], text))
+            unknown_aspects.append((play["date"], text, play["comments"]))
 
         aspect_positions.sort()
 
@@ -350,6 +378,35 @@ if __name__ == "__main__":
 
     print("CSV geschrieben: heroes_aspects.csv")
 
+    # CSV: Kombinationen Held + Szenario
+    hero_scenario_counts = {}
+
+    for play in all_plays:
+        text = (play["hero"] or "").strip()
+        text_lower = text.lower()
+
+        hero_positions = find_all_hero_positions(text_lower, HEROES)
+        hero_positions = remove_covered_matches(hero_positions)
+        if not hero_positions:
+            continue
+
+        matched_scenario = find_longest_prefix_match(play["scenario"].strip(), SCENARIOS)
+        if not matched_scenario:
+            continue
+
+        for _, hero in hero_positions:
+            canonical = HERO_ALIASES.get(hero, hero)
+            key = (canonical, matched_scenario)
+            hero_scenario_counts[key] = hero_scenario_counts.get(key, 0) + 1
+
+    with open("heroes_scenarios.csv", "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, delimiter=";")
+        writer.writerow(["Hero", "Scenario", "Count"])
+        for (hero, scenario), count in sorted(hero_scenario_counts.items(), key=lambda x: x[1], reverse=True):
+            writer.writerow([hero, scenario, count])
+
+    print("CSV geschrieben: heroes_scenarios.csv")
+
     # --- ASPEKT-STATISTIK --- #
 
     aspect_counts = {asp: 0 for asp in ASPECTS}
@@ -382,29 +439,32 @@ if __name__ == "__main__":
     def _print_unknowns(label, entries):
         if entries:
             print(f"{label} ({len(entries)}):")
-            for date, value in sorted(entries):
-                print(f"  {date}  \"{value}\"")
+            for date, value, comment in sorted(entries):
+                print(f"  {date}  \"{value}\"  →  {comment}")
         else:
             print(f"{label} (0): keine")
 
     print("\n=== UNBEKANNTE EINTRÄGE ===")
-    _print_unknowns("Helden",   unknown_heroes)
-    _print_unknowns("Aspekte",  unknown_aspects)
-    _print_unknowns("Szenarien", unknown_scenarios)
-    _print_unknowns("Modulars", unknown_modulars)
+    _print_unknowns("Helden",            unknown_heroes)
+    _print_unknowns("Aspekte",           unknown_aspects)
+    _print_unknowns("Szenarien",         unknown_scenarios)
+    _print_unknowns("Modulars",          unknown_modulars)
+    _print_unknowns("Fehlende Modulars", missing_modulars)
 
     OUTFILE_UNKNOWN = "unrecognized_report.csv"
     with open(OUTFILE_UNKNOWN, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter=";")
-        writer.writerow(["category", "date", "value"])
-        for date, value in sorted(unknown_heroes):
-            writer.writerow(["Held", date, value])
-        for date, value in sorted(unknown_aspects):
-            writer.writerow(["Aspekt", date, value])
-        for date, value in sorted(unknown_scenarios):
-            writer.writerow(["Szenario", date, value])
-        for date, value in sorted(unknown_modulars):
-            writer.writerow(["Modular", date, value])
+        writer.writerow(["category", "date", "value", "comment"])
+        for date, value, comment in sorted(unknown_heroes):
+            writer.writerow(["Held", date, value, comment])
+        for date, value, comment in sorted(unknown_aspects):
+            writer.writerow(["Aspekt", date, value, comment])
+        for date, value, comment in sorted(unknown_scenarios):
+            writer.writerow(["Szenario", date, value, comment])
+        for date, value, comment in sorted(unknown_modulars):
+            writer.writerow(["Modular", date, value, comment])
+        for date, value, comment in sorted(missing_modulars):
+            writer.writerow(["Fehlendes Modular", date, value, comment])
 
-    if any([unknown_heroes, unknown_aspects, unknown_scenarios, unknown_modulars]):
+    if any([unknown_heroes, unknown_aspects, unknown_scenarios, unknown_modulars, missing_modulars]):
         print(f"\nBericht gespeichert als: {OUTFILE_UNKNOWN}")

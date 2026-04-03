@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from scipy.signal import savgol_filter
 
 ASPECT_COLORS = {
     'Aggression': '#C8102E',
@@ -129,20 +130,26 @@ df_plays['date'] = pd.to_datetime(df_plays['date'], errors='coerce')
 plays_per_month  = df_plays.resample('ME', on='date').size().reset_index()
 plays_per_month.columns = ['date', 'count']
 
-# Polynomielle Ausgleichskurve (Grad 2) + 6-Monats-Prognose
-x_hist   = np.arange(len(plays_per_month))
-y_hist   = plays_per_month['count'].values.astype(float)
-coeffs   = np.polyfit(x_hist, y_hist, 2)
-poly     = np.poly1d(coeffs)
+# Savitzky-Golay-Ausgleichskurve + lineare Prognose (letzte 12 Monate)
+y_hist = plays_per_month['count'].values.astype(float)
+n_hist = len(y_hist)
 
-y_smooth = np.maximum(poly(x_hist), 0)
+# Fenstergröße: ungerade, mindestens 3, maximal 7
+sg_window = min(7, n_hist if n_hist % 2 == 1 else n_hist - 1)
+sg_window = max(sg_window, 3)
+y_smooth  = np.maximum(savgol_filter(y_hist, window_length=sg_window, polyorder=2), 0)
 
-n_fore   = 6
-x_fore   = np.arange(len(plays_per_month), len(plays_per_month) + n_fore)
-y_fore   = np.maximum(poly(x_fore), 0)
+# Lineare Regression über die letzten 12 Monate für die Prognose
+n_fit    = min(12, n_hist)
+x_fit    = np.arange(n_hist - n_fit, n_hist)
+coeffs   = np.polyfit(x_fit, y_hist[n_hist - n_fit:], 1)
+lin      = np.poly1d(coeffs)
+
+n_fore     = 6
+x_fore     = np.arange(n_hist, n_hist + n_fore)
+y_fore     = np.maximum(lin(x_fore), 0)
 dates_fore = pd.date_range(plays_per_month['date'].iloc[-1], periods=n_fore + 1, freq='ME')[1:]
 
-# Verbindungspunkt: letzter Hist-Punkt → erster Prognose-Punkt
 x_link = [plays_per_month['date'].iloc[-1], dates_fore[0]]
 y_link = [y_smooth[-1], y_fore[0]]
 
