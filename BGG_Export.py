@@ -21,6 +21,34 @@ HEROES = load_config("heroes.json")
 ASPECTS = load_config("aspects.json")
 SCENARIOS = load_config("scenarios.json")
 MODULARS = load_config("modulars.json")
+HERO_ALIASES = load_config("hero_aliases.json")
+
+def find_all_hero_positions(text_lower, heroes):
+    """Find all (pos, hero) occurrences for every hero in the text."""
+    all_positions = []
+    for hero in heroes:
+        hero_lower = hero.lower()
+        start = 0
+        while True:
+            pos = text_lower.find(hero_lower, start)
+            if pos == -1:
+                break
+            all_positions.append((pos, hero))
+            start = pos + 1
+    return all_positions
+
+def remove_covered_matches(positions):
+    """Remove any match whose range is fully covered by a longer match."""
+    result = []
+    for i, (pos, hero) in enumerate(positions):
+        end = pos + len(hero)
+        covered = any(
+            j != i and other_pos <= pos and other_pos + len(other) >= end
+            for j, (other_pos, other) in enumerate(positions)
+        )
+        if not covered:
+            result.append((pos, hero))
+    return result
 
 def find_longest_prefix_match(text, candidates):
     """Find the candidate whose name is the longest prefix match for text (case-insensitive)."""
@@ -129,6 +157,11 @@ if __name__ == "__main__":
     page = 1
     total_plays = None
 
+    unknown_heroes    = []  # (date, raw_text)
+    unknown_aspects   = []  # (date, raw_text)
+    unknown_scenarios = []  # (date, raw_text)
+    unknown_modulars  = []  # (date, raw_text)
+
     while True:
         print(f"Lade Seite {page} ...")
         xml_data = fetch_page(USERNAME, GAME_ID, page)
@@ -182,6 +215,7 @@ if __name__ == "__main__":
 
         if not matched_scenario:
             scenario_counts["unknown scenario"] += 1
+            unknown_scenarios.append((play["date"], play["scenario"]))
 
         # Suchen nach Modulars, bis keine mehr gefunden wurden
         modular_found = True
@@ -199,7 +233,7 @@ if __name__ == "__main__":
                     standard_found = True
 
             if not matched_modular and len(scenario_clean) > 0:
-                modular_counts[scenario_clean] = modular_counts.get(scenario_clean, 0) + 1
+                unknown_modulars.append((play["date"], scenario_clean))
 
         if not standard_found:
             modular_counts["Standard"] += 1
@@ -236,29 +270,28 @@ if __name__ == "__main__":
 
     # --- HERO-STATISTIK --- #
 
-    # Gesamtzähler pro Held
-    hero_counts = {hero: 0 for hero in HEROES}
+    # Gesamtzähler pro Held (kanonische Namen)
+    canonical_hero_names = list(dict.fromkeys(
+        HERO_ALIASES.get(h, h) for h in HEROES
+    ))
+    hero_counts = {hero: 0 for hero in canonical_hero_names}
 
     # Kombinationen (Held, Aspekt)
-    hero_aspect_counts = {}   # key = (hero, aspect)
+    hero_aspect_counts = {}   # key = (canonical_hero, aspect)
 
     for play in all_plays:
 
         text = (play["hero"] or "").strip()
         text_lower = text.lower()
 
-        # Helden mit Positionen finden
-        hero_positions = []
-        for hero in HEROES:
-            pos = text_lower.find(hero.lower())
-            if pos != -1:
-                hero_positions.append((pos, hero))
+        # Alle Helden-Positionen finden, überlappende entfernen
+        hero_positions = find_all_hero_positions(text_lower, HEROES)
+        hero_positions = remove_covered_matches(hero_positions)
+        hero_positions.sort()
 
         if not hero_positions:
-            print(f"No Hero found in: {text_lower}")
+            unknown_heroes.append((play["date"], text))
             continue
-
-        hero_positions.sort()
 
         # Aspekte mit Positionen finden
         aspect_positions = []
@@ -268,14 +301,15 @@ if __name__ == "__main__":
                 aspect_positions.append((pos, asp))
 
         if not aspect_positions:
-            print(f"No Aspect found in: {text_lower}")
+            unknown_aspects.append((play["date"], text))
 
         aspect_positions.sort()
 
         # Helden den richtigen Aspekt zuordnen
         for idx, (hero_pos, hero) in enumerate(hero_positions):
 
-            hero_counts[hero] += 1
+            canonical = HERO_ALIASES.get(hero, hero)
+            hero_counts[canonical] += 1
 
             next_hero_pos = hero_positions[idx + 1][0] if idx + 1 < len(hero_positions) else float('inf')
 
@@ -289,7 +323,7 @@ if __name__ == "__main__":
             if possible_aspects:
                 assigned_aspect = possible_aspects[0][1]
 
-            key = (hero, assigned_aspect)
+            key = (canonical, assigned_aspect)
             hero_aspect_counts[key] = hero_aspect_counts.get(key, 0) + 1
 
     # CSV: Gesamtzahl pro Held
@@ -338,3 +372,35 @@ if __name__ == "__main__":
     print(f"Aspekt-Statistik gespeichert als: {OUTFILE_ASPECTS}")
 
     print(f"FERTIG! Datei gespeichert als: {OUTFILE}")
+
+    # --- UNBEKANNTE EINTRÄGE --- #
+
+    def _print_unknowns(label, entries):
+        if entries:
+            print(f"{label} ({len(entries)}):")
+            for date, value in sorted(entries):
+                print(f"  {date}  \"{value}\"")
+        else:
+            print(f"{label} (0): keine")
+
+    print("\n=== UNBEKANNTE EINTRÄGE ===")
+    _print_unknowns("Helden",   unknown_heroes)
+    _print_unknowns("Aspekte",  unknown_aspects)
+    _print_unknowns("Szenarien", unknown_scenarios)
+    _print_unknowns("Modulars", unknown_modulars)
+
+    OUTFILE_UNKNOWN = "unrecognized_report.csv"
+    with open(OUTFILE_UNKNOWN, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=";")
+        writer.writerow(["category", "date", "value"])
+        for date, value in sorted(unknown_heroes):
+            writer.writerow(["Held", date, value])
+        for date, value in sorted(unknown_aspects):
+            writer.writerow(["Aspekt", date, value])
+        for date, value in sorted(unknown_scenarios):
+            writer.writerow(["Szenario", date, value])
+        for date, value in sorted(unknown_modulars):
+            writer.writerow(["Modular", date, value])
+
+    if any([unknown_heroes, unknown_aspects, unknown_scenarios, unknown_modulars]):
+        print(f"\nBericht gespeichert als: {OUTFILE_UNKNOWN}")
