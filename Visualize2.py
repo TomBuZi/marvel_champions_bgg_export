@@ -123,15 +123,15 @@ fig.update_layout(
     height=max(500, len(pivot) * row_height + 200),
     xaxis=dict(side='top', tickangle=-30),
     yaxis=dict(autorange='reversed'),
-    margin=dict(l=220, r=80, t=180, b=40),
+    margin=dict(l=220, r=80, t=230, b=40),
     updatemenus=[dict(
         type='dropdown', buttons=buttons, direction='down', showactive=True,
-        x=0.0, xanchor='left', y=1.0, yanchor='bottom',
+        x=0.0, xanchor='left', y=1.12, yanchor='bottom',
         bgcolor='white', bordercolor='#aaaaaa', font=dict(size=12),
     )],
     annotations=[dict(
         text='<b>Sortierung:</b>', xref='paper', yref='paper',
-        x=0.0, xanchor='left', y=1.04, yanchor='bottom',
+        x=0.0, xanchor='left', y=1.16, yanchor='bottom',
         showarrow=False, font=dict(size=12),
     )],
 )

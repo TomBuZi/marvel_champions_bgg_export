@@ -1,5 +1,6 @@
 import os
 import webbrowser
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -78,19 +79,32 @@ fig.add_trace(go.Bar(
 ), row=2, col=1)
 fig.update_yaxes(autorange='reversed', row=2, col=1)
 
-# 4. Gewinnrate
-win_loss = df_plays['result'].str.strip().value_counts()
-if 'won' in win_loss.index and 'lost' in win_loss.index:
-    fig.add_trace(go.Pie(
-        labels=['Gewonnen', 'Verloren'],
-        values=[win_loss['won'], win_loss['lost']],
-        marker=dict(colors=['#4CAF50', '#F44336']),
-        pull=[0.05, 0],
-        hovertemplate='<b>%{label}</b>: %{value} (%{percent})<extra></extra>',
-    ), row=2, col=2)
-else:
-    fig.add_annotation(text='Keine Win/Loss-Daten', row=2, col=2,
-                       xref='paper', yref='paper', showarrow=False)
+# 4. Gewinnrate (inkl. "Ohne Ergebnis" für nowinstats=1 oder kein Ergebnis)
+result_clean   = df_plays['result'].str.strip().str.lower()
+nowinstats_set = df_plays['nowinstats'].astype(str).str.strip() == '1'
+
+n_won   = ((result_clean == 'won')  & ~nowinstats_set).sum()
+n_lost  = ((result_clean == 'lost') & ~nowinstats_set).sum()
+n_other = nowinstats_set.sum()
+
+pie_labels = ['Gewonnen', 'Verloren', 'Ohne Ergebnis']
+pie_values = [n_won, n_lost, n_other]
+pie_colors = ['#4CAF50', '#F44336', '#9E9E9E']
+pie_pull   = [0.05, 0, 0]
+
+# Slices mit 0 ausblenden
+pie_labels, pie_values, pie_colors, pie_pull = zip(*(
+    (l, v, c, p) for l, v, c, p in zip(pie_labels, pie_values, pie_colors, pie_pull)
+    if v > 0
+))
+
+fig.add_trace(go.Pie(
+    labels=list(pie_labels),
+    values=list(pie_values),
+    marker=dict(colors=list(pie_colors)),
+    pull=list(pie_pull),
+    hovertemplate='<b>%{label}</b>: %{value} (%{percent})<extra></extra>',
+), row=2, col=2)
 
 # 5. Aspekt-Präferenz Top-5-Helden (gestapelter Balken)
 top5 = df_heroes.sort_values('Count', ascending=False).head(5)['Hero'].tolist()
@@ -115,13 +129,57 @@ df_plays['date'] = pd.to_datetime(df_plays['date'], errors='coerce')
 plays_per_month  = df_plays.resample('ME', on='date').size().reset_index()
 plays_per_month.columns = ['date', 'count']
 
+# Polynomielle Ausgleichskurve (Grad 2) + 6-Monats-Prognose
+x_hist   = np.arange(len(plays_per_month))
+y_hist   = plays_per_month['count'].values.astype(float)
+coeffs   = np.polyfit(x_hist, y_hist, 2)
+poly     = np.poly1d(coeffs)
+
+y_smooth = np.maximum(poly(x_hist), 0)
+
+n_fore   = 6
+x_fore   = np.arange(len(plays_per_month), len(plays_per_month) + n_fore)
+y_fore   = np.maximum(poly(x_fore), 0)
+dates_fore = pd.date_range(plays_per_month['date'].iloc[-1], periods=n_fore + 1, freq='ME')[1:]
+
+# Verbindungspunkt: letzter Hist-Punkt → erster Prognose-Punkt
+x_link = [plays_per_month['date'].iloc[-1], dates_fore[0]]
+y_link = [y_smooth[-1], y_fore[0]]
+
+# Tatsächliche Werte
 fig.add_trace(go.Scatter(
-    x=plays_per_month['date'],
-    y=plays_per_month['count'],
-    mode='lines+markers',
+    x=plays_per_month['date'], y=plays_per_month['count'],
+    mode='lines+markers', name='Monatliche Spiele',
     marker=dict(color=MARVEL_RED, size=6),
     line=dict(color=MARVEL_RED, width=2),
     hovertemplate='%{x|%b %Y}: %{y} Spiele<extra></extra>',
+    showlegend=False,
+), row=3, col=2)
+
+# Ausgleichskurve (historisch)
+fig.add_trace(go.Scatter(
+    x=plays_per_month['date'], y=y_smooth,
+    mode='lines', name='Trend',
+    line=dict(color='#FF8C00', width=2, dash='dash'),
+    hovertemplate='%{x|%b %Y} Trend: %{y:.1f}<extra></extra>',
+    showlegend=False,
+), row=3, col=2)
+
+# Verbindung Trend → Prognose
+fig.add_trace(go.Scatter(
+    x=x_link, y=y_link,
+    mode='lines', line=dict(color='#FF8C00', width=2, dash='dash'),
+    showlegend=False, hoverinfo='skip',
+), row=3, col=2)
+
+# Prognose
+fig.add_trace(go.Scatter(
+    x=dates_fore, y=y_fore,
+    mode='lines+markers', name='Prognose (6 Monate)',
+    line=dict(color='#FF8C00', width=2, dash='dot'),
+    marker=dict(color='#FF8C00', size=5, symbol='circle-open'),
+    hovertemplate='%{x|%b %Y} Prognose: %{y:.1f}<extra></extra>',
+    showlegend=False,
 ), row=3, col=2)
 
 # --- Layout ---
