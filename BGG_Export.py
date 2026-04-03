@@ -28,6 +28,17 @@ SCENARIO_DEFAULT_MODULARS = load_config("scenario_default_modulars.json")
 # Nur Schwierigkeitsgrad-Modulars — gelten nicht als echte Modularauswahl
 DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "expert ii"}
 
+# Gewünschte Reihenfolge der Schwierigkeitsgrade in Modularkombinationen
+_DIFFICULTY_ORDER = ["Standard", "Standard II", "Standard III", "Expert", "Expert II"]
+_DIFFICULTY_RANK  = {m.lower(): i for i, m in enumerate(_DIFFICULTY_ORDER)}
+
+def sort_modular_combo(modular_name):
+    """Sortierschlüssel: Schwierigkeitsgrade zuerst (in fester Reihenfolge), dann alphabetisch."""
+    key = modular_name.lower()
+    if key in _DIFFICULTY_RANK:
+        return (0, _DIFFICULTY_RANK[key], "")
+    return (1, 0, modular_name.lower())
+
 def find_all_hero_positions(text_lower, heroes):
     """Find all (pos, hero) occurrences for every hero in the text."""
     all_positions = []
@@ -273,7 +284,7 @@ if __name__ == "__main__":
 
         # Kombinations-Zähler aktualisieren
         if matched_scenario and counted_this_play:
-            combo = tuple(sorted(counted_this_play))
+            combo = tuple(sorted(counted_this_play, key=sort_modular_combo))
             key = (matched_scenario, combo)
             scenario_combo_counts[key] = scenario_combo_counts.get(key, 0) + 1
 

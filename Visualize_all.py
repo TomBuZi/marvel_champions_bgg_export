@@ -35,7 +35,6 @@ for i, fig in enumerate(figs):
     divs.append(fig.to_html(
         full_html=False,
         include_plotlyjs=include_js,
-        config={'scrollZoom': True},
     ))
 
 tab_buttons = "\n    ".join(
