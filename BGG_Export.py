@@ -1,3 +1,6 @@
+import json
+import os
+import re
 import requests
 import xml.etree.ElementTree as ET
 import csv
@@ -8,229 +11,26 @@ USERNAME = "Almecho"   # <-- HIER deinen BGG-Nutzernamen eintragen
 GAME_ID = 285774                 # Marvel Champions
 OUTFILE = "marvel_champions_plays.csv"
 
-HEROES = [
-    "Captain America", "Iron Man", "Spider-Man", "She-Hulk",
-    "Captain Marvel", "Black Panther", "Doctor Strange",
-    "Hulk", "Ms. Marvel", "Black Widow", "Hawkeye",
-    "Scarlet Witch", "Ant-Man", "Wasp", "Spectrum",
-    "Quicksilver", "Gamora", "Drax", "Star-Lord",
-    "Venom", "Nebula", "Groot", "Rocket Raccoon",
-    "Ghost-Spider", "Miles Morales", "Storm", "Cyclops",
-    "Wolverine", "Colossus", "Shadowcat", "Rogue", "Gambit",
-    "Phoenix", "Cable", "Domino", "Psylocke", "X-23", "Jubilee",
-	"Spider-Woman", "Nightcrawler", "Iceman", "Thor",
-	"Valkyrie", "Ironheart", "Nova", "Vision", "Adam Warlock",
-	"Spider-Ham", "SP//dr", "Angel", "Deadpool", "Magik",
-	"Bishop", "Magneto", "Nick Fury", "Maria Hill",
-	"Silk", "Falcon", "Winter Soldier", "Tigra", "War Machine"
-]
+CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
 
-ASPECTS = ["Aggression", "Justice", "Leadership", "Protection", "Basic", "'Pool", "Precon"]
+def load_config(filename):
+    with open(os.path.join(CONFIG_DIR, filename), encoding="utf-8") as f:
+        return json.load(f)
 
-SCENARIOS = [
-    "Rhino",
-    "Klaw",
-    "Ultron",
-    "Risky Business",
-    "Mutagen Formula",
-    "Wrecking Crew",
-    "Crossbones",
-    "Absorbing Man",
-    "Taskmaster",
-    "Zola",
-    "Red Skull",
-    "Kang",
-    "Brotherhood of Badoon",
-    "Infiltrate the Museum",
-    "Escape the Museum",
-    "Nebula",
-    "Ronan the Accuser",
-    "Ebony Maw",
-    "Tower Defense",
-    "Thanos",
-    "Hela",
-    "Loki",
-    "The Hood",
-    "Sandman",
-    "Venom",
-    "Mysterio",
-    "The Sinister Six",
-    "Venom Goblin",
-    "Sabretooth",
-    "Project Wideawake",
-    "Master Mold",
-    "Mansion Attack",
-    "Magneto",
-    "Magog",
-    "Spiral",
-    "Mojo",
-    "Morlock Siege",
-    "On the Run",
-    "Juggernaut",
-    "Mister Sinister",
-    "Stryfe",
-    "Unus",
-    "Four Horsemen",
-    "Apocalypse",
-    "Dark Beast",
-    "En Sabah Nur",
-    "Black Widow",
-    "Batroc",
-    "M.O.D.O.K.",
-    "Thunderbolts",
-    "Baron Zemo",
-    "Enchantress",
-    "God of Lies",
-    "Iron Man",
-    "Captain Marvel",
-    "Captain America",
-    "Spider-Woman",
-	"She-Hulk",
-	"Vision"
-]
+HEROES = load_config("heroes.json")
+ASPECTS = load_config("aspects.json")
+SCENARIOS = load_config("scenarios.json")
+MODULARS = load_config("modulars.json")
 
-MODULARS = [
-    "Campaign",
-    "Standard",
-    "Standard II",
-    "Standard III",
-    "Expert",
-    "Expert II",
-    "Kree Fanatic",
-    "Bomb Scare",
-    "Masters of Evil",
-    "Under Attack",
-    "Legions of Hydra",
-    "Doomsday Chair",
-    "Goblin Gimmicks",
-    "A Mess of Things",
-    "Power Drain",
-    "Running Interference",
-    "Experimental Weapons",
-    "Hydra Assault",
-    "Weapon Master",
-    "Hydra Patrol",
-    "Temporal",
-    "Anachronauts",
-    "Master of Time",
-    "Band of Badoon",
-    "Galactic Artifacts",
-    "Kree Militants",
-    "Menagerie Medley",
-    "Space Pirates",
-    "Ship Command",
-    "Power Stone",
-    "Badoon Headhunter",
-    "Black Order",
-    "Armies of Titan",
-    "Children of Thanos",
-    "Infinity Gauntlet",
-    "Legions of Hel",
-    "Frost Giants",
-    "Enchantress",
-    "Beasty Boys",
-    "Brothers Grimm",
-    "Crossfire's Crew",
-    "Mister Hyde",
-    "Ransacked Armory",
-    "Sinister Syndicate",
-    "State of Emergency",
-    "Streets of Mayhem",
-    "Wrecking Crew",
-    "City in Chaos",
-    "Down to Earth",
-    "Goblin Gear",
-    "Guerrilla Tactics",
-    "Osborn Tech",
-    "Personal Nightmare",
-    "Sinister Assault",
-    "Symbiotic Strength",
-    "Whispers of Paranoia",
-    "Armadillo",
-    "Zzzax",
-    "The Inheritors",
-    "Iron Spider's Sinister Six",
-    "Brotherhood",
-    "Mystique",
-    "Zero Tolerance",
-    "Sentinels",
-    "Acolytes",
-    "Future Past",
-    "Deathstrike",
-    "Shadow King",
-    "Exodus",
-    "Reavers",
-    "Crime",
-    "Fantasy",
-    "Horror",
-    "Sci-Fi",
-    "Sitcom",
-    "Western",
-    "Longshot",
-    "Military Grade",
-    "Mutant Slayers",
-    "Nasty Boys",
-    "Black Tom Cassady",
-    "Flight",
-    "Super Strength",
-    "Telepathy",
-    "Extreme Measures",
-    "Mutant Insurrection",
-    "Dreadpool",
-    "Infinites",
-    "Dystopian Nightmare",
-    "Hounds",
-    "Dark Riders",
-    "Savage Land",
-    "Genosha",
-    "Blue Moon",
-    "Celestial Tech",
-    "Clan Akkaba",
-    "Sauron",
-    "Arcade",
-    "Crazy Gang",
-    "Hellfire",
-    "A.I.M. Abduction",
-    "A.I.M. Science",
-    "Batroc's Brigade",
-    "Scientist Supreme",
-    "Gravitational Pull",
-    "Hard Sound",
-    "Pale Little Spider",
-    "Power of the Atom",
-    "Supersonic",
-    "The Leaper",
-    "S.H.I.E.L.D.",
-    "Extreme Risk",
-    "Growing Strong",
-    "Techno",
-    "Whiteout",
-    "Trickster Magic",
-    "Mighty Avengers",
-    "The Initiative",
-    "Maria Hill",
-    "Dangerous Recruits",
-    "Cape Killer",
-    "Martial Law",
-    "Heroes for Hire",
-    "Paladin",
-    "New Avengers",
-    "Secret Avengers",
-    "Namor",
-    "Atlanteans",
-    "Spider-Man",
-    "Defenders",
-    "Hell's Kitchen",
-    "Cloak & Dagger",
-	"Scarlet Twins",
-	"Moon Knight",
-	"Young Avengers",
-	"Royal Guard",
-	"Deadly Duo",
-	"Thunderbolts",
-	"Taskmaster",
-	"S.H.I.E.L.D. Ops",
-]
+def find_longest_prefix_match(text, candidates):
+    """Find the candidate whose name is the longest prefix match for text (case-insensitive)."""
+    text_lower = text.strip().lower()
+    best = None
+    for candidate in candidates:
+        if text_lower.startswith(candidate.lower()):
+            if best is None or len(candidate) > len(best):
+                best = candidate
+    return best
 
 def fetch_page(username, game_id, page):
     url = (
@@ -239,9 +39,9 @@ def fetch_page(username, game_id, page):
     )
     
     cookies = {
-        "SessionID": "5470802078119cf272aff7a4eda2507ac71866f1u250203",
-        "bggpassword": "utxfz2uevwxzeiv2xj5sigsc63f10gjdo",
-        "bggusername": "Almecho"
+        "SessionID": os.environ.get("BGG_SESSION_ID", ""),
+        "bggpassword": os.environ.get("BGG_PASSWORD", ""),
+        "bggusername": os.environ.get("BGG_USERNAME", username),
     }
 
     r = requests.get(url, cookies=cookies, headers={"User-Agent": "Mozilla/5.0"})
@@ -265,7 +65,6 @@ def split_comment(comment):
         return "", "", ""
 
     # 1) Split nach 'vs' (mit beliebigen Whitespaces davor/danach)
-    import re
     parts = re.split(r'\s*vs\s*', comment, maxsplit=1)
 
     if len(parts) == 1:
@@ -313,15 +112,7 @@ def extract_play_data(play):
         data[scen] = ""
 
     # Längstes Match ermitteln
-    matched_scenario = None
-    for scen in SCENARIOS:
-        if scenario_clean.lower().startswith(scen.lower()):
-            if matched_scenario is None:
-                matched_scenario = scen
-            else:
-                # Prüfen, ob aktuelles Szenario längeres Präfix ist als bisheriges Match
-                if len(scen) > len(matched_scenario):
-                    matched_scenario = scen
+    matched_scenario = find_longest_prefix_match(scenario_clean, SCENARIOS)
 
     # Gefundenes Szenario markieren
     if matched_scenario:
@@ -332,260 +123,218 @@ def extract_play_data(play):
 
     return data
     
-all_plays = []
-page = 1
-total_plays = None
+if __name__ == "__main__":
 
-while True:
-    print(f"Lade Seite {page} ...")
-    xml_data = fetch_page(USERNAME, GAME_ID, page)
-    plays, total = parse_plays(xml_data)
+    all_plays = []
+    page = 1
+    total_plays = None
 
-    if total_plays is None:
-        total_plays = total
-        print(f"Insgesamt {total_plays} Partien gefunden.")
+    while True:
+        print(f"Lade Seite {page} ...")
+        xml_data = fetch_page(USERNAME, GAME_ID, page)
+        plays, total = parse_plays(xml_data)
 
-    if not plays:
-        break
+        if total_plays is None:
+            total_plays = total
+            print(f"Insgesamt {total_plays} Partien gefunden.")
 
-    for p in plays:
-        all_plays.append(extract_play_data(p))
+        if not plays:
+            break
 
-    if len(all_plays) >= total_plays:
-        break
+        for p in plays:
+            all_plays.append(extract_play_data(p))
 
-    page += 1
-    time.sleep(1)  # API nicht überlasten
+        if len(all_plays) >= total_plays:
+            break
 
-print(f"Insgesamt geladen: {len(all_plays)} Partien.")
+        page += 1
+        time.sleep(1)  # API nicht überlasten
 
-# CSV schreiben
-with open(OUTFILE, "w", newline="", encoding="utf-8") as f:
-    writer = csv.DictWriter(f, fieldnames=all_plays[0].keys(), delimiter=';')
-    writer.writeheader()
-    writer.writerows(all_plays)
+    print(f"Insgesamt geladen: {len(all_plays)} Partien.")
 
-# --- ZWEITE CSV: Szenario-Statistik erzeugen --- #
+    if not all_plays:
+        print("Keine Partien gefunden. Beende.")
+        exit(0)
 
-scenario_counts = {scen: 0 for scen in SCENARIOS}
-scenario_counts["unknown scenario"] = 0
+    # CSV schreiben
+    with open(OUTFILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=all_plays[0].keys(), delimiter=';')
+        writer.writeheader()
+        writer.writerows(all_plays)
 
-modular_counts = {mod: 0 for mod in MODULARS}
+    # --- ZWEITE CSV: Szenario-Statistik erzeugen --- #
 
-# Durch alle geladenen Partien gehen und die matches zählen
-for play in all_plays:
-    scenario_clean = play["scenario"].strip().lower()
+    scenario_counts = {scen: 0 for scen in SCENARIOS}
+    scenario_counts["unknown scenario"] = 0
 
-    # Längstes Match ermitteln
-    matched_scenario = None
-    for scen in SCENARIOS:
-        if scenario_clean.lower().startswith(scen.lower()):
-            if matched_scenario is None:
-                matched_scenario = scen
-            else:
-                # Prüfen, ob aktuelles Szenario längeres Präfix ist als bisheriges Match
-                if len(scen) > len(matched_scenario):
-                    matched_scenario = scen
+    modular_counts = {mod: 0 for mod in MODULARS}
 
-    if matched_scenario:
-        scenario_counts[matched_scenario] += 1
-        scenario_clean = scenario_clean[len(matched_scenario):].strip()
-    
-    if not matched_scenario:
-        scenario_counts["unknown scenario"] += 1
-    
-    # Suchen nach Modulars, bis keine mehr gefunden wurden
-    modular_found = True
-    standard_found = False
-    while (modular_found):
-        modular_found = False
-        matched_modular = None
-        for mod in MODULARS:
-            if scenario_clean.lower().startswith(mod.lower()):
+    # Durch alle geladenen Partien gehen und die matches zählen
+    for play in all_plays:
+        scenario_clean = play["scenario"].strip().lower()
+
+        # Längstes Match ermitteln
+        matched_scenario = find_longest_prefix_match(scenario_clean, SCENARIOS)
+
+        if matched_scenario:
+            scenario_counts[matched_scenario] += 1
+            scenario_clean = scenario_clean[len(matched_scenario):].strip()
+
+        if not matched_scenario:
+            scenario_counts["unknown scenario"] += 1
+
+        # Suchen nach Modulars, bis keine mehr gefunden wurden
+        modular_found = True
+        standard_found = False
+        while modular_found:
+            modular_found = False
+            matched_modular = find_longest_prefix_match(scenario_clean, MODULARS)
+            if matched_modular:
                 modular_found = True
-                if matched_modular is None:
-                    matched_modular = mod
-                else:
-                    # Prüfen, ob aktuelles Szenario längeres Präfix ist als bisheriges Match
-                    if len(mod) > len(matched_modular):
-                        matched_modular = mod
 
-        if matched_modular:
-            modular_counts[matched_modular] += 1
-            scenario_clean = scenario_clean[len(matched_modular):].strip()
-            if matched_modular in ["Standard","Standard II","Standard III"]:
-                standard_found = True
-    
-        if not matched_modular and len(scenario_clean)>0:
-            modular_counts[scenario_clean] = modular_counts.get(scenario_clean, 0) + 1
-    
-    if not standard_found:
-        modular_counts["Standard"] += 1
-            
-# Sortieren nach Anzahl Partien (absteigend)
-sorted_stats = sorted(
-    scenario_counts.items(),
-    key=lambda x: x[1],
-    reverse=True
-)
+            if matched_modular:
+                modular_counts[matched_modular] += 1
+                scenario_clean = scenario_clean[len(matched_modular):].strip()
+                if matched_modular in ["Standard", "Standard II", "Standard III"]:
+                    standard_found = True
 
-# Zweite CSV schreiben
-OUTFILE_STATS = "marvel_champions_scenario_stats.csv"
-with open(OUTFILE_STATS, "w", newline="", encoding="utf-8") as f:
-    writer = csv.writer(f, delimiter=';')
-    writer.writerow(["scenario", "count"])
-    writer.writerows(sorted_stats)
+            if not matched_modular and len(scenario_clean) > 0:
+                modular_counts[scenario_clean] = modular_counts.get(scenario_clean, 0) + 1
 
-# Sortieren nach Anzahl Partien (absteigend)
-sorted_stats = sorted(
-    modular_counts.items(),
-    key=lambda x: x[1],
-    reverse=True
-)
+        if not standard_found:
+            modular_counts["Standard"] += 1
 
-# Zweite CSV schreiben
-OUTFILE_STATS = "marvel_champions_modular_stats.csv"
-with open(OUTFILE_STATS, "w", newline="", encoding="utf-8") as f:
-    writer = csv.writer(f, delimiter=';')
-    writer.writerow(["modular", "count"])
-    writer.writerows(sorted_stats)
+    # Sortieren nach Anzahl Partien (absteigend)
+    sorted_stats = sorted(
+        scenario_counts.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
 
-print(f"Statistik gespeichert als: {OUTFILE_STATS}")
+    # Zweite CSV schreiben
+    OUTFILE_STATS = "marvel_champions_scenario_stats.csv"
+    with open(OUTFILE_STATS, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=';')
+        writer.writerow(["scenario", "count"])
+        writer.writerows(sorted_stats)
 
-# --- HERO-STATISTIK --- #
+    # Sortieren nach Anzahl Partien (absteigend)
+    sorted_stats = sorted(
+        modular_counts.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
 
-############################################################
-# ZÄHLER INITIALISIEREN
-############################################################
+    # Zweite CSV schreiben
+    OUTFILE_STATS = "marvel_champions_modular_stats.csv"
+    with open(OUTFILE_STATS, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=';')
+        writer.writerow(["modular", "count"])
+        writer.writerows(sorted_stats)
 
-# Gesamtzähler pro Held
-hero_counts = {hero: 0 for hero in HEROES}
+    print(f"Statistik gespeichert als: {OUTFILE_STATS}")
 
-# Kombinationen (Held, Aspekt)
-hero_aspect_counts = {}   # key = (hero, aspect)
+    # --- HERO-STATISTIK --- #
 
-############################################################
-# HAUPTLOGIK: HELDEN & ASPEKTE PRO PARTIE EXTRAHIEREN
-############################################################
+    # Gesamtzähler pro Held
+    hero_counts = {hero: 0 for hero in HEROES}
 
-for play in all_plays:
+    # Kombinationen (Held, Aspekt)
+    hero_aspect_counts = {}   # key = (hero, aspect)
 
-    text = (play["hero"] or "").strip()
-    text_lower = text.lower()
+    for play in all_plays:
 
-    # -------------------------------------------------------
-    # 1) Helden mit Positionen finden
-    # -------------------------------------------------------
-    hero_positions = []
-    for hero in HEROES:
-        pos = text_lower.find(hero.lower())
-        if pos != -1:
-            hero_positions.append((pos, hero))
+        text = (play["hero"] or "").strip()
+        text_lower = text.lower()
 
-    # Wenn keine Helden gefunden → nächster Datensatz
-    if not hero_positions:
-        print(f"No Hero found in: {text_lower}")
-        continue
+        # Helden mit Positionen finden
+        hero_positions = []
+        for hero in HEROES:
+            pos = text_lower.find(hero.lower())
+            if pos != -1:
+                hero_positions.append((pos, hero))
 
-    hero_positions.sort()  # nach Position
+        if not hero_positions:
+            print(f"No Hero found in: {text_lower}")
+            continue
 
-    # -------------------------------------------------------
-    # 2) Aspekte mit Positionen finden
-    # -------------------------------------------------------
-    aspect_positions = []
-    for asp in ASPECTS:
-        pos = text_lower.find(asp.lower())
-        if pos != -1:
-            aspect_positions.append((pos, asp))
+        hero_positions.sort()
 
-    # Wenn keine Helden gefunden → nächster Datensatz
-    if not aspect_positions:
-        print(f"No Aspect found in: {text_lower}")
+        # Aspekte mit Positionen finden
+        aspect_positions = []
+        for asp in ASPECTS:
+            pos = text_lower.find(asp.lower())
+            if pos != -1:
+                aspect_positions.append((pos, asp))
 
-    aspect_positions.sort()
+        if not aspect_positions:
+            print(f"No Aspect found in: {text_lower}")
 
-    # -------------------------------------------------------
-    # 3) Helden den richtigen Aspekt zuordnen
-    # -------------------------------------------------------
-    for idx, (hero_pos, hero) in enumerate(hero_positions):
+        aspect_positions.sort()
 
-        hero_counts[hero] += 1  # Gesamtzähler Held erhöhen
+        # Helden den richtigen Aspekt zuordnen
+        for idx, (hero_pos, hero) in enumerate(hero_positions):
 
-        # nächsten Helden finden (falls existiert)
-        next_hero_pos = hero_positions[idx + 1][0] if idx + 1 < len(hero_positions) else float('inf')
+            hero_counts[hero] += 1
 
-        assigned_aspect = ""
+            next_hero_pos = hero_positions[idx + 1][0] if idx + 1 < len(hero_positions) else float('inf')
 
-        # Aspekte suchen, die:
-        # pos > hero_pos  UND  pos < next_hero_pos
-        possible_aspects = [
-            (pos, asp) for (pos, asp) in aspect_positions
-            if hero_pos < pos < next_hero_pos
-        ]
+            assigned_aspect = ""
 
-        # Wenn vorhanden → der erste im Text gehört zu diesem Helden
-        if possible_aspects:
-            assigned_aspect = possible_aspects[0][1]
+            possible_aspects = [
+                (pos, asp) for (pos, asp) in aspect_positions
+                if hero_pos < pos < next_hero_pos
+            ]
 
-        # Zähler für Held-Aspekt-Kombination
-        key = (hero, assigned_aspect)
-        hero_aspect_counts[key] = hero_aspect_counts.get(key, 0) + 1
+            if possible_aspects:
+                assigned_aspect = possible_aspects[0][1]
 
-############################################################
-# CSV AUSGABE 1: Gesamtzahl pro Held
-############################################################
+            key = (hero, assigned_aspect)
+            hero_aspect_counts[key] = hero_aspect_counts.get(key, 0) + 1
 
-with open("heroes_total.csv", "w", encoding="utf-8", newline="") as f:
-    writer = csv.writer(f, delimiter=";")
-    writer.writerow(["Hero", "Count"])
+    # CSV: Gesamtzahl pro Held
+    with open("heroes_total.csv", "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, delimiter=";")
+        writer.writerow(["Hero", "Count"])
 
-    for hero, count in sorted(hero_counts.items(), key=lambda x: x[1], reverse=True):
-        writer.writerow([hero, count])
+        for hero, count in sorted(hero_counts.items(), key=lambda x: x[1], reverse=True):
+            writer.writerow([hero, count])
 
-print("CSV geschrieben: heroes_total.csv")
+    print("CSV geschrieben: heroes_total.csv")
 
-############################################################
-# CSV AUSGABE 2: Kombinationen Held + Aspekt
-############################################################
+    # CSV: Kombinationen Held + Aspekt
+    with open("heroes_aspects.csv", "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, delimiter=";")
+        writer.writerow(["Hero", "Aspect", "Count"])
 
-with open("heroes_aspects.csv", "w", encoding="utf-8", newline="") as f:
-    writer = csv.writer(f, delimiter=";")
-    writer.writerow(["Hero", "Aspect", "Count"])
+        for (hero, aspect), count in sorted(hero_aspect_counts.items(), key=lambda x: x[1], reverse=True):
+            writer.writerow([hero, aspect, count])
 
-    for (hero, aspect), count in sorted(hero_aspect_counts.items(), key=lambda x: x[1], reverse=True):
-        writer.writerow([hero, aspect, count])
+    print("CSV geschrieben: heroes_aspects.csv")
 
-print("CSV geschrieben: heroes_aspects.csv")
+    # --- ASPEKT-STATISTIK --- #
 
-# --- ASPEKT-STATISTIK --- #
+    aspect_counts = {asp: 0 for asp in ASPECTS}
 
-ASPECTS = ["Aggression", "Justice", "Leadership ", "Protection", "'Pool", "Basic", "Precon"]
+    for play in all_plays:
+        hero_text = (play["hero"] or "").lower()
 
-aspect_counts = {asp: 0 for asp in ASPECTS}
+        for asp in ASPECTS:
+            count = hero_text.count(asp.lower())
+            aspect_counts[asp] += count
 
-for play in all_plays:
-    hero_text = (play["hero"] or "").lower()
+    sorted_aspect_stats = sorted(
+        aspect_counts.items(),
+        key=lambda x: x[1],
+        reverse=True
+    )
 
-    for asp in ASPECTS:
-        # Anzahl der Vorkommen zählen (case-insensitive)
-        count = hero_text.count(asp.lower())
-        aspect_counts[asp] += count
+    OUTFILE_ASPECTS = "marvel_champions_aspect_stats.csv"
+    with open(OUTFILE_ASPECTS, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=';')
+        writer.writerow(["aspect", "count"])
+        writer.writerows(sorted_aspect_stats)
 
-# Sortieren nach Anzahl (absteigend)
-sorted_aspect_stats = sorted(
-    aspect_counts.items(),
-    key=lambda x: x[1],
-    reverse=True
-)
+    print(f"Aspekt-Statistik gespeichert als: {OUTFILE_ASPECTS}")
 
-# CSV schreiben
-OUTFILE_ASPECTS = "marvel_champions_aspect_stats.csv"
-with open(OUTFILE_ASPECTS, "w", newline="", encoding="utf-8") as f:
-    writer = csv.writer(f, delimiter=';')
-    writer.writerow(["aspect", "count"])
-    writer.writerows(sorted_aspect_stats)
-
-print(f"Aspekt-Statistik gespeichert als: {OUTFILE_ASPECTS}")
-
-
-print(f"FERTIG! Datei gespeichert als: {OUTFILE}")
+    print(f"FERTIG! Datei gespeichert als: {OUTFILE}")
