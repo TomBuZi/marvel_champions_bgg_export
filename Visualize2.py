@@ -63,80 +63,86 @@ def build_args(sorted_df, all_cols):
     return heroes, z_norm.tolist(), text
 
 
-# --- Daten laden ---
-df = pd.read_csv('heroes_aspects.csv', sep=';')
-df = df[df['Count'] > 0]
+def build():
+    # --- Daten laden ---
+    df = pd.read_csv('heroes_aspects.csv', sep=';')
+    df = df[df['Count'] > 0]
 
-pivot = df.pivot_table(index='Hero', columns='Aspect', values='Count', aggfunc='sum', fill_value=0)
-aspect_order = ['Aggression', 'Justice', 'Leadership', 'Protection', 'Basic', "'Pool", 'Precon']
-aspects  = [a for a in aspect_order if a in pivot.columns]
-pivot    = pivot.reindex(columns=aspects, fill_value=0)
-pivot    = pivot[pivot.sum(axis=1) > 0]
-pivot['Total'] = pivot.sum(axis=1)
-all_cols = aspects + ['Total']
+    pivot = df.pivot_table(index='Hero', columns='Aspect', values='Count', aggfunc='sum', fill_value=0)
+    aspect_order = ['Aggression', 'Justice', 'Leadership', 'Protection', 'Basic', "'Pool", 'Precon']
+    aspects  = [a for a in aspect_order if a in pivot.columns]
+    pivot    = pivot.reindex(columns=aspects, fill_value=0)
+    pivot    = pivot[pivot.sum(axis=1) > 0]
+    pivot['Total'] = pivot.sum(axis=1)
+    all_cols = aspects + ['Total']
 
-colorscale = make_band_colorscale(all_cols)
+    colorscale = make_band_colorscale(all_cols)
 
-# Standard: Total absteigend
-heroes_0, z_0, text_0 = build_args(pivot.sort_values('Total', ascending=False), all_cols)
+    # Standard: Total absteigend
+    heroes_0, z_0, text_0 = build_args(pivot.sort_values('Total', ascending=False), all_cols)
 
-fig = go.Figure(go.Heatmap(
-    z=z_0,
-    x=all_cols,
-    y=heroes_0,
-    text=text_0,
-    customdata=text_0,
-    texttemplate='%{text}',
-    textfont=dict(size=12, color='black'),
-    colorscale=colorscale,
-    showscale=False,
-    zmin=0, zmax=1,
-    hovertemplate='<b>%{y}</b> – %{x}: %{customdata} Partien<extra></extra>',
-))
-
-# Trennlinie zwischen Aspekten und Total
-fig.add_shape(
-    type='line', xref='x', yref='paper',
-    x0=len(aspects) - 0.5, x1=len(aspects) - 0.5,
-    y0=0, y1=1,
-    line=dict(color='#333333', width=2),
-)
-
-# Dropdown-Buttons
-sort_options = [
-    ('Total',              'Total', False),
-    ('Alphabetisch (A–Z)', 'Hero',  True),
-] + [(a, a, False) for a in aspects]
-
-buttons = []
-for label, sort_key, asc in sort_options:
-    heroes_s, z_s, text_s = build_args(pivot.sort_values(sort_key, ascending=asc), all_cols)
-    buttons.append(dict(
-        label=label,
-        method='restyle',
-        args=[{'z': [z_s], 'y': [heroes_s], 'text': [text_s], 'customdata': [text_s]}],
+    fig = go.Figure(go.Heatmap(
+        z=z_0,
+        x=all_cols,
+        y=heroes_0,
+        text=text_0,
+        customdata=text_0,
+        texttemplate='%{text}',
+        textfont=dict(size=12, color='black'),
+        colorscale=colorscale,
+        showscale=False,
+        zmin=0, zmax=1,
+        hovertemplate='<b>%{y}</b> – %{x}: %{customdata} Partien<extra></extra>',
     ))
 
-row_height = 28
-fig.update_layout(
-    title=dict(text='Helden × Aspekte — Anzahl Partien', font=dict(size=16)),
-    height=max(500, len(pivot) * row_height + 200),
-    xaxis=dict(side='top', tickangle=-30),
-    yaxis=dict(autorange='reversed'),
-    margin=dict(l=220, r=80, t=230, b=40),
-    updatemenus=[dict(
-        type='dropdown', buttons=buttons, direction='down', showactive=True,
-        x=0.0, xanchor='left', y=1.12, yanchor='bottom',
-        bgcolor='white', bordercolor='#aaaaaa', font=dict(size=12),
-    )],
-    annotations=[dict(
-        text='<b>Sortierung:</b>', xref='paper', yref='paper',
-        x=0.0, xanchor='left', y=1.16, yanchor='bottom',
-        showarrow=False, font=dict(size=12),
-    )],
-)
+    # Trennlinie zwischen Aspekten und Total
+    fig.add_shape(
+        type='line', xref='x', yref='paper',
+        x0=len(aspects) - 0.5, x1=len(aspects) - 0.5,
+        y0=0, y1=1,
+        line=dict(color='#333333', width=2),
+    )
 
-output = 'hero_aspect_matrix.html'
-fig.write_html(output, include_plotlyjs='cdn')
-print(f'Gespeichert als: {output}')
-webbrowser.open(f'file:///{os.path.abspath(output)}')
+    # Dropdown-Buttons
+    sort_options = [
+        ('Total',              'Total', False),
+        ('Alphabetisch (A–Z)', 'Hero',  True),
+    ] + [(a, a, False) for a in aspects]
+
+    buttons = []
+    for label, sort_key, asc in sort_options:
+        heroes_s, z_s, text_s = build_args(pivot.sort_values(sort_key, ascending=asc), all_cols)
+        buttons.append(dict(
+            label=label,
+            method='restyle',
+            args=[{'z': [z_s], 'y': [heroes_s], 'text': [text_s], 'customdata': [text_s]}],
+        ))
+
+    row_height = 28
+    fig.update_layout(
+        title=dict(text='Helden × Aspekte — Anzahl Partien', font=dict(size=16)),
+        height=max(500, len(pivot) * row_height + 200),
+        xaxis=dict(side='top', tickangle=-30),
+        yaxis=dict(autorange='reversed'),
+        margin=dict(l=220, r=80, t=230, b=40),
+        updatemenus=[dict(
+            type='dropdown', buttons=buttons, direction='down', showactive=True,
+            x=0.0, xanchor='left', y=1.12, yanchor='bottom',
+            bgcolor='white', bordercolor='#aaaaaa', font=dict(size=12),
+        )],
+        annotations=[dict(
+            text='<b>Sortierung:</b>', xref='paper', yref='paper',
+            x=0.0, xanchor='left', y=1.16, yanchor='bottom',
+            showarrow=False, font=dict(size=12),
+        )],
+    )
+
+    return fig
+
+
+if __name__ == '__main__':
+    fig = build()
+    output = 'hero_aspect_matrix.html'
+    fig.write_html(output, include_plotlyjs='cdn')
+    print(f'Gespeichert als: {output}')
+    webbrowser.open(f'file:///{os.path.abspath(output)}')
