@@ -232,7 +232,8 @@ if __name__ == "__main__":
     scenario_counts["unknown scenario"] = 0
 
     modular_counts = {mod: 0 for mod in MODULARS}
-    scenario_combo_counts = {}  # (scenario, combo_tuple) -> count
+    scenario_combo_counts      = {}  # (scenario, combo_tuple) -> count
+    scenario_combo_hero_counts = {}  # (scenario, combo_tuple, hero) -> count
 
     # Durch alle geladenen Partien gehen und die matches zählen
     for play in all_plays:
@@ -294,6 +295,15 @@ if __name__ == "__main__":
             key = (matched_scenario, combo)
             scenario_combo_counts[key] = scenario_combo_counts.get(key, 0) + 1
 
+            # Helden für Baumansicht tracken
+            hero_text_lower = (play["hero"] or "").strip().lower()
+            hero_pos_list   = find_all_hero_positions(hero_text_lower, HEROES)
+            hero_pos_list   = remove_covered_matches(hero_pos_list)
+            for _, hero in hero_pos_list:
+                canonical = HERO_ALIASES.get(hero, hero)
+                hero_key  = (matched_scenario, combo, canonical)
+                scenario_combo_hero_counts[hero_key] = scenario_combo_hero_counts.get(hero_key, 0) + 1
+
     # Sortieren nach Anzahl Partien (absteigend)
     sorted_stats = sorted(
         scenario_counts.items(),
@@ -336,6 +346,18 @@ if __name__ == "__main__":
         ):
             writer.writerow([scenario, " + ".join(combo), count])
     print(f"Statistik gespeichert als: {OUTFILE_COMBOS}")
+
+    # Szenario × Modularkombination × Held CSV
+    OUTFILE_COMBO_HEROES = "marvel_champions_scenario_modular_hero.csv"
+    with open(OUTFILE_COMBO_HEROES, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=';')
+        writer.writerow(["scenario", "modulars", "hero", "count"])
+        for (scenario, combo, hero), count in sorted(
+            scenario_combo_hero_counts.items(),
+            key=lambda x: (scenario_order.get(x[0][0], 9999), -x[1])
+        ):
+            writer.writerow([scenario, " + ".join(combo), hero, count])
+    print(f"Statistik gespeichert als: {OUTFILE_COMBO_HEROES}")
 
     # --- HERO-STATISTIK --- #
 
