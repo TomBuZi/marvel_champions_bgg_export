@@ -7,7 +7,7 @@ import csv
 import time
 import html
 
-USERNAME = "Almecho"   # <-- HIER deinen BGG-Nutzernamen eintragen
+USERNAME = os.environ.get("BGG_USERNAME", "Almecho")
 GAME_ID = 285774                 # Marvel Champions
 OUTFILE = "marvel_champions_plays.csv"
 

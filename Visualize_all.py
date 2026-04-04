@@ -122,8 +122,10 @@ html = """<!DOCTYPE html>
 </body>
 </html>"""
 
-output = 'marvel_champions_all.html'
+output = os.path.join('docs', 'index.html')
+os.makedirs('docs', exist_ok=True)
 with open(output, 'w', encoding='utf-8') as f:
     f.write(html)
 print(f'Gespeichert als: {output}')
-webbrowser.open(f'file:///{os.path.abspath(output)}')
+if not os.environ.get('CI'):
+    webbrowser.open(f'file:///{os.path.abspath(output)}')

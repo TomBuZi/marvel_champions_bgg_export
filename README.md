@@ -10,7 +10,7 @@ This project fetches Marvel Champions play data from the BGG XML API, parses str
 
 ## Setup
 
-### Credentials
+### Local
 
 Copy `.env.example` to `.env` and fill in your BGG credentials:
 
@@ -20,11 +20,26 @@ BGG_USERNAME=...
 BGG_PASSWORD=...
 ```
 
-### Dependencies
+Install dependencies:
 
 ```
-pip install requests pandas plotly scipy python-dotenv
+pip install requests pandas plotly scipy
 ```
+
+### GitHub Actions + GitHub Pages
+
+The workflow in `.github/workflows/update.yml` runs every Monday at 06:00 UTC (and on manual trigger). It fetches fresh BGG data, builds `docs/index.html`, and commits it back to the repository. GitHub Pages then serves that file automatically.
+
+**One-time setup:**
+
+1. Add three repository secrets (Settings → Secrets and variables → Actions):
+   - `BGG_USERNAME` — your BGG username
+   - `BGG_SESSION_ID` — from your BGG browser cookies (optional for public profiles)
+   - `BGG_PASSWORD` — your BGG password (optional for public profiles)
+2. Enable GitHub Pages (Settings → Pages → Source: main branch, `/docs` folder).
+3. Trigger the workflow once manually (Actions tab → Run workflow) to generate the initial page.
+
+The live page will be at `https://<your-username>.github.io/<repo-name>/`.
 
 ---
 
