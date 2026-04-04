@@ -12,19 +12,21 @@ This project fetches Marvel Champions play data from the BGG XML API, parses str
 
 ### Local
 
-Copy `.env.example` to `.env` and fill in your BGG credentials:
-
-```
-BGG_SESSION_ID=...
-BGG_USERNAME=...
-BGG_PASSWORD=...
-```
-
 Install dependencies:
 
 ```
-pip install requests pandas plotly scipy
+pip install requests pandas plotly scipy python-dotenv
 ```
+
+Copy `.env.example` to `.env` and fill in your BGG credentials (the BGG API requires authentication even for public profiles):
+
+```
+BGG_USERNAME=...
+BGG_SESSION_ID=...
+BGG_PASSWORD=...
+```
+
+Both `BGG_SESSION_ID` and `BGG_PASSWORD` (the encrypted value) can be found in your browser cookies after logging in to boardgamegeek.com. `python-dotenv` is optional — if not installed, set the three variables as regular environment variables instead.
 
 ### GitHub Actions + GitHub Pages
 
@@ -33,9 +35,7 @@ The workflow in `.github/workflows/update.yml` runs every Monday at 06:00 UTC (a
 **One-time setup:**
 
 1. Add three repository secrets (Settings → Secrets and variables → Actions):
-   - `BGG_USERNAME` — your BGG username
-   - `BGG_SESSION_ID` — from your BGG browser cookies (optional for public profiles)
-   - `BGG_PASSWORD` — your BGG password (optional for public profiles)
+   - `BGG_USERNAME`, `BGG_SESSION_ID`, `BGG_PASSWORD`
 2. Enable GitHub Pages (Settings → Pages → Source: main branch, `/docs` folder).
 3. Trigger the workflow once manually (Actions tab → Run workflow) to generate the initial page.
 

@@ -6,3 +6,4 @@ __pycache__/
 !docs/index.html
 *.png
 set_enc.bat
+docs/index.html

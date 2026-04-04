@@ -7,6 +7,12 @@ import csv
 import time
 import html
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 USERNAME = os.environ.get("BGG_USERNAME", "Almecho")
 GAME_ID = 285774                 # Marvel Champions
 OUTFILE = "marvel_champions_plays.csv"
@@ -91,11 +97,10 @@ def fetch_page(username, game_id, page):
     )
     
     cookies = {
-        "SessionID": os.environ.get("BGG_SESSION_ID", ""),
+        "SessionID":  os.environ.get("BGG_SESSION_ID", ""),
         "bggpassword": os.environ.get("BGG_PASSWORD", ""),
         "bggusername": os.environ.get("BGG_USERNAME", username),
     }
-
     r = requests.get(url, cookies=cookies, headers={"User-Agent": "Mozilla/5.0"})
     r.raise_for_status()
     return r.text
