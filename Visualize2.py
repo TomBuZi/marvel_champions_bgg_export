@@ -13,6 +13,7 @@ ASPECT_COLORS = {
     "'Pool":      '#FF69B4',
     'Precon':     '#A0A0A0',
     'Total':      '#404040',
+    'Undefined':  '#cccccc',
 }
 
 def make_band_colorscale(cols, intensity=0.55):
@@ -66,15 +67,34 @@ def build_args(sorted_df, all_cols):
 def build():
     # --- Daten laden ---
     df = pd.read_csv('heroes_aspects.csv', sep=';')
-    df = df[df['Count'] > 0]
+    df_totals = pd.read_csv('heroes_total.csv', sep=';').set_index('Hero')
 
-    pivot = df.pivot_table(index='Hero', columns='Aspect', values='Count', aggfunc='sum', fill_value=0)
+    # Pivot aller Aspekte (inkl. leerem Aspekt für "Undefined")
+    pivot_full = df.pivot_table(index='Hero', columns='Aspect', values='Count', aggfunc='sum', fill_value=0)
+
     aspect_order = ['Aggression', 'Justice', 'Leadership', 'Protection', 'Basic', "'Pool", 'Precon']
-    aspects  = [a for a in aspect_order if a in pivot.columns]
-    pivot    = pivot.reindex(columns=aspects, fill_value=0)
-    pivot    = pivot[pivot.sum(axis=1) > 0]
-    pivot['Total'] = pivot.sum(axis=1)
-    all_cols = aspects + ['Total']
+    aspects = [a for a in aspect_order if a in pivot_full.columns]
+    pivot   = pivot_full.reindex(columns=aspects, fill_value=0)
+
+    # Undefined-Spalte: Partien ohne erkannten Aspekt
+    if '' in pivot_full.columns:
+        pivot['Undefined'] = pivot_full['']
+    else:
+        pivot['Undefined'] = 0
+
+    # Zeilen ohne jegliche Daten entfernen
+    pivot = pivot[pivot.sum(axis=1) > 0]
+
+    # Total aus heroes_total.csv — korrekte Spielanzahl auch für Multi-Aspekt-Helden
+    pivot['Total'] = pivot.index.map(lambda h: int(df_totals.loc[h, 'Count']) if h in df_totals.index else 0)
+
+    # Undefined-Spalte weglassen wenn keine undefined Partien vorhanden
+    has_undefined = pivot['Undefined'].sum() > 0
+    extra_cols = (['Undefined'] if has_undefined else []) + ['Total']
+    all_cols   = aspects + extra_cols
+
+    # Trennlinie vor Total (Index der Total-Spalte)
+    separator_x = len(all_cols) - 1 - 0.5
 
     colorscale = make_band_colorscale(all_cols)
 
@@ -95,10 +115,10 @@ def build():
         hovertemplate='<b>%{y}</b> – %{x}: %{customdata} Partien<extra></extra>',
     ))
 
-    # Trennlinie zwischen Aspekten und Total
+    # Trennlinie vor Total
     fig.add_shape(
         type='line', xref='x', yref='paper',
-        x0=len(aspects) - 0.5, x1=len(aspects) - 0.5,
+        x0=separator_x, x1=separator_x,
         y0=0, y1=1,
         line=dict(color='#333333', width=2),
     )

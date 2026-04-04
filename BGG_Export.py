@@ -27,7 +27,8 @@ HEROES = load_config("heroes.json")
 ASPECTS = load_config("aspects.json")
 SCENARIOS = load_config("scenarios.json")
 MODULARS = load_config("modulars.json")
-HERO_ALIASES       = load_config("hero_aliases.json")
+HERO_ALIASES          = load_config("hero_aliases.json")
+HERO_DEFAULT_ASPECTS  = load_config("hero_default_aspects.json")
 SCENARIO_MODULARS         = load_config("scenario_modulars.json")
 SCENARIO_DEFAULT_MODULARS = load_config("scenario_default_modulars.json")
 
@@ -369,9 +370,6 @@ if __name__ == "__main__":
             if pos != -1:
                 aspect_positions.append((pos, asp))
 
-        if not aspect_positions:
-            unknown_aspects.append((play["date"], text, play["comments"]))
-
         aspect_positions.sort()
 
         # Helden den richtigen Aspekt zuordnen
@@ -385,18 +383,29 @@ if __name__ == "__main__":
 
             next_hero_pos = hero_positions[idx + 1][0] if idx + 1 < len(hero_positions) else float('inf')
 
-            assigned_aspect = ""
-
             possible_aspects = [
-                (pos, asp) for (pos, asp) in aspect_positions
+                asp for pos, asp in aspect_positions
                 if hero_pos < pos < next_hero_pos
             ]
 
-            if possible_aspects:
-                assigned_aspect = possible_aspects[0][1]
+            if canonical in HERO_DEFAULT_ASPECTS:
+                # Multi-aspect hero: use all found aspects; fall back to defaults if none found
+                aspects_to_count = possible_aspects or HERO_DEFAULT_ASPECTS[canonical]
+            else:
+                # Regular hero: use first found aspect only
+                aspects_to_count = [possible_aspects[0]] if possible_aspects else [""]
 
-            key = (canonical, assigned_aspect)
-            hero_aspect_counts[key] = hero_aspect_counts.get(key, 0) + 1
+            for asp in aspects_to_count:
+                key = (canonical, asp)
+                hero_aspect_counts[key] = hero_aspect_counts.get(key, 0) + 1
+
+        # Unknown aspects: flag if any hero in this play needs explicit aspects but none were found
+        if not aspect_positions:
+            for _, h in hero_positions:
+                c = HERO_ALIASES.get(h, h)
+                if c not in HERO_DEFAULT_ASPECTS or not HERO_DEFAULT_ASPECTS[c]:
+                    unknown_aspects.append((play["date"], text, play["comments"]))
+                    break
 
     # CSV: Gesamtzahl pro Held
     with open("heroes_total.csv", "w", encoding="utf-8", newline="") as f:
@@ -448,15 +457,13 @@ if __name__ == "__main__":
     print("CSV geschrieben: heroes_scenarios.csv")
 
     # --- ASPEKT-STATISTIK --- #
+    # Direkt aus hero_aspect_counts ableiten, damit Defaults (z.B. Adam Warlock) korrekt gezählt werden
 
     aspect_counts = {asp: 0 for asp in ASPECTS}
 
-    for play in all_plays:
-        hero_text = (play["hero"] or "").lower()
-
-        for asp in ASPECTS:
-            count = hero_text.count(asp.lower())
-            aspect_counts[asp] += count
+    for (hero, aspect), count in hero_aspect_counts.items():
+        if aspect in aspect_counts:
+            aspect_counts[aspect] += count
 
     sorted_aspect_stats = sorted(
         aspect_counts.items(),
