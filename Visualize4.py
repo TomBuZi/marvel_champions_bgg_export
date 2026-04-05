@@ -193,6 +193,7 @@ def build():
     fig.update_layout(
         title=dict(text='Szenarien \u00d7 Modularkombinationen \u2014 Klick zum Reinzoomen', font=dict(size=16)),
         uniformtext=dict(mode='hide', minsize=8),
+        dragmode=False,
         height=850,
         margin=dict(l=10, r=10, t=100, b=10),
         updatemenus=[dict(

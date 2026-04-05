@@ -122,6 +122,7 @@ def build():
         title=dict(text='Helden × Schurken — Anzahl Partien', font=dict(size=16)),
         autosize=True,
         height=fig_height,
+        dragmode=False,
         xaxis=dict(
             side='top',
             tickangle=-45,

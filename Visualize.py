@@ -195,6 +195,7 @@ def build():
     fig.update_layout(
         title=dict(text='Marvel Champions — Statistik-Dashboard', font=dict(size=18)),
         height=1200,
+        dragmode=False,
         showlegend=True,
         legend=dict(title='Aspekt', x=1.02, y=0.17),
         template='plotly_white',

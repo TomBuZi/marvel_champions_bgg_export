@@ -142,6 +142,7 @@ def build():
     fig.update_layout(
         title=dict(text='Helden × Aspekte — Anzahl Partien', font=dict(size=16)),
         height=max(500, len(pivot) * row_height + 200),
+        dragmode=False,
         xaxis=dict(side='top', tickangle=-30),
         yaxis=dict(autorange='reversed'),
         margin=dict(l=220, r=80, t=230, b=40),

@@ -35,10 +35,10 @@ for i, fig in enumerate(figs):
     divs.append(fig.to_html(
         full_html=False,
         include_plotlyjs=include_js,
-        config={'responsive': True},
+        config={'responsive': True, 'scrollZoom': False},
     ))
 
-tab_buttons = "\n    ".join(
+nav_buttons = "\n    ".join(
     f'<button onclick="showTab({i})">{label}</button>'
     for i, (label, _) in enumerate(TAB_LABELS)
 )
@@ -47,6 +47,8 @@ tab_panels = "\n  ".join(
     f'<div class="tab-content" id="tab-{slug}">{div}</div>'
     for (_, slug), div in zip(TAB_LABELS, divs)
 )
+
+tab_labels_js = "[" + ", ".join(f'"{label}"' for label, _ in TAB_LABELS) + "]"
 
 html = """<!DOCTYPE html>
 <html lang="de">
@@ -58,76 +60,119 @@ html = """<!DOCTYPE html>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: Arial, sans-serif; background: #f5f5f5; }
 
-    .tab-bar {
-      display: flex;
-      align-items: center;
-      background: #16213e;
-      border-bottom: 3px solid #e62429;
-      padding: 0 12px;
+    /* ── Sticky wrapper hält Tab-Bar + Nav-Menü zusammen ── */
+    .header {
       position: sticky;
       top: 0;
       z-index: 100;
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
-      flex-shrink: 0;
+      background: #16213e;
+    }
+
+    .tab-bar {
+      display: flex;
+      align-items: center;
+      border-bottom: 3px solid #e62429;
+      padding: 0 12px;
     }
     .tab-bar .title {
       color: #e62429;
       font-size: 15px;
       font-weight: bold;
-      padding: 13px 20px 13px 4px;
-      margin-right: 12px;
-      border-right: 1px solid #334;
+      padding: 13px 4px;
       white-space: nowrap;
+      flex: 1;
     }
-    .tab-bar button {
+    .active-label {
+      color: #cccccc;
+      font-size: 13px;
+      padding: 0 12px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .burger-btn {
       background: transparent;
       border: none;
+      color: #ffffff;
+      font-size: 22px;
+      cursor: pointer;
+      padding: 10px 4px 10px 12px;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+    .burger-btn:hover { color: #e62429; }
+
+    /* ── Dropdown-Navigationsmenü ── */
+    .nav-menu {
+      display: none;
+      border-top: 1px solid #334;
+    }
+    .nav-menu.open { display: block; }
+    .nav-menu button {
+      display: block;
+      width: 100%;
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #223;
       color: #aaaaaa;
       cursor: pointer;
-      font-size: 13px;
+      font-size: 14px;
       font-weight: bold;
-      padding: 14px 18px;
-      border-bottom: 3px solid transparent;
-      margin-bottom: -3px;
-      transition: color 0.15s;
-      white-space: nowrap;
+      padding: 14px 20px;
+      text-align: left;
+      transition: color 0.15s, background 0.15s;
     }
-    .tab-bar button:hover { color: #ffffff; }
-    .tab-bar button.active {
-      color: #ffffff;
-      border-bottom: 3px solid #e62429;
-    }
+    .nav-menu button:hover  { color: #ffffff; background: #1e2d52; }
+    .nav-menu button.active { color: #e62429; }
 
     .tab-content { display: none; }
     .tab-content.active { display: block; overflow-x: auto; }
-
-    @media (max-width: 600px) {
-      .tab-bar .title { font-size: 12px; padding: 12px 10px 12px 4px; }
-      .tab-bar button { padding: 12px 10px; font-size: 11px; }
-    }
   </style>
 </head>
 <body>
-  <div class="tab-bar">
-    <span class="title">Marvel Champions</span>
-    """ + tab_buttons + """
+  <div class="header">
+    <div class="tab-bar">
+      <span class="title">Marvel Champions</span>
+      <span class="active-label" id="active-label"></span>
+      <button class="burger-btn" id="burger-btn" onclick="toggleMenu()" aria-label="Navigation">&#9776;</button>
+    </div>
+    <nav class="nav-menu" id="nav-menu">
+    """ + nav_buttons + """
+    </nav>
   </div>
   """ + tab_panels + """
   <script>
+    var TAB_LABELS = """ + tab_labels_js + """;
+
+    function toggleMenu() {
+      document.getElementById('nav-menu').classList.toggle('open');
+    }
+
     function showTab(n) {
-      document.querySelectorAll('.tab-bar button').forEach(function(b, i) {
+      document.querySelectorAll('.nav-menu button').forEach(function(b, i) {
         b.classList.toggle('active', i === n);
       });
       document.querySelectorAll('.tab-content').forEach(function(p, i) {
         p.classList.toggle('active', i === n);
       });
+      document.getElementById('active-label').textContent = TAB_LABELS[n];
+      document.getElementById('nav-menu').classList.remove('open');
       // Plotly needs a resize call after a hidden div becomes visible
       var panel = document.querySelectorAll('.tab-content')[n];
       panel.querySelectorAll('.plotly-graph-div').forEach(function(div) {
         if (window.Plotly) { Plotly.Plots.resize(div); }
       });
     }
+
+    // Menü schließen bei Klick außerhalb
+    document.addEventListener('click', function(e) {
+      var menu = document.getElementById('nav-menu');
+      var btn  = document.getElementById('burger-btn');
+      if (menu.classList.contains('open') && !menu.contains(e.target) && e.target !== btn) {
+        menu.classList.remove('open');
+      }
+    });
+
     showTab(0);
   </script>
 </body>
