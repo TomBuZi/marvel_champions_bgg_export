@@ -10,87 +10,87 @@ import Visualize3
 import Visualize4
 
 TAB_LABELS = [
-    ("Dashboard",            "dashboard"),
-    ("Helden \u00d7 Aspekte",   "hero_aspect"),
-    ("Helden \u00d7 Schurken",  "hero_villain"),
+    ("Dashboard",              "dashboard"),
+    ("Helden \u00d7 Aspekte",     "hero_aspect"),
+    ("Helden \u00d7 Schurken",    "hero_villain"),
     ("Szenarien \u00d7 Modulars", "scenario_modulars"),
 ]
 
-print("Baue Dashboard ...")
-fig1 = Visualize.build()
+PLOTLY_CONFIG = {'responsive': True, 'scrollZoom': False}
+
+print("Baue Dashboard (Desktop) ...")
+fig1d = Visualize.build(mobile=False)
+print("Baue Dashboard (Mobile) ...")
+fig1m = Visualize.build(mobile=True)
 print("Baue Helden \u00d7 Aspekte ...")
 fig2 = Visualize2.build()
 print("Baue Helden \u00d7 Schurken ...")
 fig3 = Visualize3.build()
 print("Baue Szenarien \u00d7 Modulars ...")
 fig4 = Visualize4.build()
+print("Baue HTML-Tabellen ...")
+table3_html = Visualize3.build_table_html()
+table4_html = Visualize4.build_table_html()
 print("Alle Visualisierungen gebaut.")
 
-figs = [fig1, fig2, fig3, fig4]
+# --- Plotly HTML-Fragmente rendern ---
+div1d = fig1d.to_html(full_html=False, include_plotlyjs='cdn', config=PLOTLY_CONFIG)
+div1m = fig1m.to_html(full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
+div2  = fig2.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
+div3  = fig3.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
+div4  = fig4.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 
-# Render each figure as an HTML fragment
-divs = []
-for i, fig in enumerate(figs):
-    include_js = 'cdn' if i == 0 else False
-    divs.append(fig.to_html(
-        full_html=False,
-        include_plotlyjs=include_js,
-        config={'responsive': True, 'scrollZoom': False},
-    ))
+# Viz4: Baumansicht-Höhe für mobile JS übergeben
+import pandas as pd
+_sc_count = len(pd.read_csv('marvel_champions_scenario_modular_combos.csv', sep=';')['scenario'].unique())
+ic_height_js = max(950, _sc_count * 52)
 
 nav_buttons = "\n    ".join(
     f'<button onclick="showTab({i})">{label}</button>'
     for i, (label, _) in enumerate(TAB_LABELS)
 )
-
-tab_panels = "\n  ".join(
-    f'<div class="tab-content" id="tab-{slug}">{div}</div>'
-    for (_, slug), div in zip(TAB_LABELS, divs)
-)
-
 tab_labels_js = "[" + ", ".join(f'"{label}"' for label, _ in TAB_LABELS) + "]"
 
-html = """<!DOCTYPE html>
+html = f"""<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Marvel Champions \u2014 Statistiken</title>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; background: #f5f5f5; }
+    * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+    body {{ font-family: Arial, sans-serif; background: #f5f5f5; }}
 
-    /* ── Sticky wrapper hält Tab-Bar + Nav-Menü zusammen ── */
-    .header {
+    /* ── Sticky Kopfleiste ── */
+    .header {{
       position: sticky;
       top: 0;
       z-index: 100;
       background: #16213e;
-    }
-
-    .tab-bar {
+    }}
+    .tab-bar {{
       display: flex;
       align-items: center;
       border-bottom: 3px solid #e62429;
       padding: 0 12px;
-    }
-    .tab-bar .title {
+    }}
+    .tab-bar .title {{
       color: #e62429;
       font-size: 15px;
       font-weight: bold;
       padding: 13px 4px;
       white-space: nowrap;
       flex: 1;
-    }
-    .active-label {
+    }}
+    .active-label {{
       color: #cccccc;
       font-size: 13px;
       padding: 0 12px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-    }
-    .burger-btn {
+    }}
+    .burger-btn {{
       background: transparent;
       border: none;
       color: #ffffff;
@@ -99,34 +99,90 @@ html = """<!DOCTYPE html>
       padding: 10px 4px 10px 12px;
       line-height: 1;
       flex-shrink: 0;
-    }
-    .burger-btn:hover { color: #e62429; }
+    }}
+    .burger-btn:hover {{ color: #e62429; }}
 
     /* ── Dropdown-Navigationsmenü ── */
-    .nav-menu {
-      display: none;
-      border-top: 1px solid #334;
-    }
-    .nav-menu.open { display: block; }
-    .nav-menu button {
-      display: block;
-      width: 100%;
-      background: transparent;
-      border: none;
-      border-bottom: 1px solid #223;
-      color: #aaaaaa;
-      cursor: pointer;
-      font-size: 14px;
-      font-weight: bold;
-      padding: 14px 20px;
-      text-align: left;
+    .nav-menu {{ display: none; border-top: 1px solid #334; }}
+    .nav-menu.open {{ display: block; }}
+    .nav-menu button {{
+      display: block; width: 100%;
+      background: transparent; border: none; border-bottom: 1px solid #223;
+      color: #aaaaaa; cursor: pointer; font-size: 14px; font-weight: bold;
+      padding: 14px 20px; text-align: left;
       transition: color 0.15s, background 0.15s;
-    }
-    .nav-menu button:hover  { color: #ffffff; background: #1e2d52; }
-    .nav-menu button.active { color: #e62429; }
+    }}
+    .nav-menu button:hover  {{ color: #ffffff; background: #1e2d52; }}
+    .nav-menu button.active {{ color: #e62429; }}
 
-    .tab-content { display: none; }
-    .tab-content.active { display: block; overflow-x: auto; }
+    /* ── Tab-Inhalte ── */
+    .tab-content {{ display: none; }}
+    .tab-content.active {{ display: block; }}
+
+    /* ── Mobile View-Switcher (Viz 3 + 4) ── */
+    .mobile-switch {{
+      display: none;
+      background: #f0f0f0;
+      border-bottom: 2px solid #ccc;
+      padding: 8px 12px;
+      gap: 8px;
+    }}
+    .mobile-switch button {{
+      background: white; border: 1px solid #ccc; border-radius: 3px;
+      color: #444; cursor: pointer; font-size: 12px; font-weight: bold;
+      padding: 7px 14px;
+      transition: background 0.15s, color 0.15s;
+    }}
+    .mobile-switch button.active {{ background: #16213e; color: white; border-color: #16213e; }}
+
+    /* ── Desktop-Plotly vs. Mobile-Plotly ── */
+    .mobile-vis {{ display: none; }}
+
+    /* ── Sticky HTML-Tabellen ── */
+    .sticky-table-wrap {{
+      overflow: auto;
+      max-height: calc(100vh - 80px);
+    }}
+    .sticky-table {{
+      border-collapse: collapse;
+      min-width: max-content;
+      font-size: 12px;
+    }}
+    .sticky-table th, .sticky-table td {{
+      padding: 5px 10px;
+      border: 1px solid #e0e0e0;
+      white-space: nowrap;
+    }}
+    .sticky-table th {{
+      background: #16213e;
+      color: white;
+      font-weight: bold;
+      z-index: 3;
+    }}
+    .tbl-corner {{
+      position: sticky; top: 0; left: 0;
+      z-index: 5 !important;
+      background: #0f1628 !important;
+    }}
+    .tbl-col  {{ position: sticky; top: 0;  z-index: 3; }}
+    .tbl-row  {{ position: sticky; left: 0; z-index: 2; text-align: left; }}
+    .sticky-table td {{ text-align: center; }}
+    .sticky-table tbody tr:nth-child(even) td {{ background-color: inherit; }}
+
+    /* ── Viz3+Viz4-Switch immer sichtbar (ersetzt Plotly-updatemenus) ── */
+    #viz3-switch, #viz4-switch {{ display: flex; }}
+
+    /* ── Mobile: Responsive-Anpassungen ── */
+    @media (max-width: 768px) {{
+      .desktop-vis  {{ display: none !important; }}
+      .mobile-vis   {{ display: block; }}
+      .mobile-switch {{ display: flex; }}
+      .viz-plotly   {{ display: none; }}   /* initial: Kreuztabelle gezeigt */
+      .viz-table    {{ display: block; }}
+    }}
+    @media (min-width: 769px) {{
+      .viz-table {{ display: none; }}  /* Desktop-Standard: ausgeblendet (JS kann übersteuern) */
+    }}
   </style>
 </head>
 <body>
@@ -137,43 +193,128 @@ html = """<!DOCTYPE html>
       <button class="burger-btn" id="burger-btn" onclick="toggleMenu()" aria-label="Navigation">&#9776;</button>
     </div>
     <nav class="nav-menu" id="nav-menu">
-    """ + nav_buttons + """
+    {nav_buttons}
     </nav>
   </div>
-  """ + tab_panels + """
+
+  <!-- Tab 0: Dashboard -->
+  <div class="tab-content" id="tab-dashboard">
+    <div class="desktop-vis">{div1d}</div>
+    <div class="mobile-vis">{div1m}</div>
+  </div>
+
+  <!-- Tab 1: Helden × Aspekte -->
+  <div class="tab-content" id="tab-hero_aspect">
+    {div2}
+  </div>
+
+  <!-- Tab 2: Helden × Schurken (Plotly + mobile HTML-Tabelle) -->
+  <div class="tab-content" id="tab-hero_villain">
+    <div class="mobile-switch" id="viz3-switch">
+      <button data-view="table"    onclick="mobileSwitchView('viz3','table',this)">Kreuztabelle</button>
+      <button data-view="sunburst" onclick="mobileSwitchView('viz3','sunburst',this)">Sunburst</button>
+    </div>
+    <div class="viz-plotly" id="viz3-plotly">{div3}</div>
+    <div class="viz-table"  id="viz3-table">{table3_html}</div>
+  </div>
+
+  <!-- Tab 3: Szenarien × Modulars (Plotly + mobile HTML-Tabelle) -->
+  <div class="tab-content" id="tab-scenario_modulars">
+    <div class="mobile-switch" id="viz4-switch">
+      <button data-view="table"       onclick="mobileSwitchView('viz4','table',this)">Kreuztabelle</button>
+      <button data-view="sunburst"    onclick="mobileSwitchView('viz4','sunburst',this)">Sunburst</button>
+      <button data-view="baumansicht" onclick="mobileSwitchView('viz4','baumansicht',this)">Baumansicht</button>
+    </div>
+    <div class="viz-plotly" id="viz4-plotly">{div4}</div>
+    <div class="viz-table"  id="viz4-table">{table4_html}</div>
+  </div>
+
   <script>
-    var TAB_LABELS = """ + tab_labels_js + """;
+    var TAB_LABELS    = {tab_labels_js};
+    var VIZ4_IC_HEIGHT = {ic_height_js};
 
-    function toggleMenu() {
+    function toggleMenu() {{
       document.getElementById('nav-menu').classList.toggle('open');
-    }
+    }}
 
-    function showTab(n) {
-      document.querySelectorAll('.nav-menu button').forEach(function(b, i) {
+    function showTab(n) {{
+      document.querySelectorAll('.nav-menu button').forEach(function(b, i) {{
         b.classList.toggle('active', i === n);
-      });
-      document.querySelectorAll('.tab-content').forEach(function(p, i) {
+      }});
+      document.querySelectorAll('.tab-content').forEach(function(p, i) {{
         p.classList.toggle('active', i === n);
-      });
+      }});
       document.getElementById('active-label').textContent = TAB_LABELS[n];
       document.getElementById('nav-menu').classList.remove('open');
-      // Plotly needs a resize call after a hidden div becomes visible
+      // Plotly resize nur für sichtbare Divs
       var panel = document.querySelectorAll('.tab-content')[n];
-      panel.querySelectorAll('.plotly-graph-div').forEach(function(div) {
-        if (window.Plotly) { Plotly.Plots.resize(div); }
-      });
-    }
+      panel.querySelectorAll('.plotly-graph-div').forEach(function(div) {{
+        if (window.Plotly && div.offsetParent !== null) {{
+          Plotly.Plots.resize(div);
+        }}
+      }});
+    }}
 
-    // Menü schließen bei Klick außerhalb
-    document.addEventListener('click', function(e) {
+    // Menü bei Klick außerhalb schließen
+    document.addEventListener('click', function(e) {{
       var menu = document.getElementById('nav-menu');
       var btn  = document.getElementById('burger-btn');
-      if (menu.classList.contains('open') && !menu.contains(e.target) && e.target !== btn) {
+      if (menu.classList.contains('open') && !menu.contains(e.target) && e.target !== btn) {{
         menu.classList.remove('open');
-      }
-    });
+      }}
+    }});
+
+    // Mobile View-Switcher für Viz3 + Viz4
+    function mobileSwitchView(vizId, view, btn) {{
+      var plotEl  = document.getElementById(vizId + '-plotly');
+      var tableEl = document.getElementById(vizId + '-table');
+      var switchEl = document.getElementById(vizId + '-switch');
+      switchEl.querySelectorAll('button').forEach(function(b) {{ b.classList.remove('active'); }});
+      btn.classList.add('active');
+
+      if (view === 'table') {{
+        plotEl.style.display  = 'none';
+        tableEl.style.display = 'block';
+      }} else {{
+        plotEl.style.display  = 'block';
+        tableEl.style.display = 'none';
+        var plotDiv = plotEl.querySelector('.plotly-graph-div');
+        if (plotDiv && window.Plotly) {{
+          var restyle, relayout;
+          if (vizId === 'viz3') {{
+            // traces: [0]=heatmap, [1]=sunburst
+            restyle  = {{visible: [false, true]}};
+            relayout = {{'title.text': 'Helden \u2192 Szenarien \u2192 Helden',
+                         height: 850, margin: {{l:10,r:10,t:100,b:10}}}};
+          }} else if (view === 'sunburst') {{
+            // viz4 traces: [0]=sunburst, [1]=heatmap, [2]=icicle
+            restyle  = {{visible: [true, false, false]}};
+            relayout = {{'title.text': 'Szenarien \u00d7 Modularkombinationen',
+                         height: 850, margin: {{l:10,r:10,t:60,b:10}}}};
+          }} else {{
+            restyle  = {{visible: [false, false, true]}};
+            relayout = {{'title.text': 'Szenarien \u2192 Modulars \u2192 Helden',
+                         height: VIZ4_IC_HEIGHT, margin: {{l:10,r:10,t:60,b:10}}}};
+          }}
+          Plotly.update(plotDiv, restyle, relayout);
+          Plotly.Plots.resize(plotDiv);
+        }}
+      }}
+    }}
 
     showTab(0);
+
+    // Initialen aktiven Button für viz3+viz4 je nach Screen setzen
+    (function() {{
+      var isMobile = window.matchMedia('(max-width: 768px)').matches;
+      var defaultView = isMobile ? 'table' : 'sunburst';
+      ['viz3', 'viz4'].forEach(function(vizId) {{
+        var sw = document.getElementById(vizId + '-switch');
+        sw.querySelectorAll('button').forEach(function(b) {{
+          b.classList.toggle('active', b.getAttribute('data-view') === defaultView);
+        }});
+      }});
+    }})();
   </script>
 </body>
 </html>"""

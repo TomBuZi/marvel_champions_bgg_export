@@ -14,20 +14,55 @@ def load_config(filename):
 SCENARIOS = load_config("scenarios.json")  # Reihenfolge beibehalten
 
 
-def build():
-    # --- Daten laden ---
+def _load_pivot():
     df = pd.read_csv('heroes_scenarios.csv', sep=';')
     df = df[df['Count'] > 0]
-
     pivot = df.pivot_table(index='Hero', columns='Scenario', values='Count', aggfunc='sum', fill_value=0)
-
-    # Spalten: Szenarien in JSON-Reihenfolge, nur vorhandene
     scenario_cols = [s for s in SCENARIOS if s in pivot.columns]
     pivot = pivot.reindex(columns=scenario_cols, fill_value=0)
-
-    # Zeilen: Helden alphabetisch, nur gespielte
     pivot = pivot[pivot.sum(axis=1) > 0]
     pivot = pivot.sort_index(ascending=True)
+    return pivot
+
+
+def _heat_color(v, max_v):
+    if v <= 0 or max_v <= 0:
+        return '#ffffff'
+    t = min(v / max_v, 1.0)
+    r = 255
+    g = int(255 * (1 - t * 0.8))
+    b = int(255 * (1 - t))
+    return f'rgb({r},{g},{b})'
+
+
+def build_table_html():
+    """HTML-Tabelle mit sticky Row/Column-Headern für die mobile Kreuztabelle."""
+    pivot = _load_pivot()
+    heroes    = list(pivot.index)
+    scenarios = list(pivot.columns)
+    values    = pivot.values.tolist()
+    max_v     = max(max(row) for row in values) if values else 1
+
+    th_corner = '<th class="tbl-corner">Held / Szenario</th>'
+    th_cols   = ''.join(f'<th class="tbl-col">{s}</th>' for s in scenarios)
+    header    = f'<thead><tr>{th_corner}{th_cols}</tr></thead>'
+
+    rows = []
+    for i, hero in enumerate(heroes):
+        cells = [f'<th class="tbl-row">{hero}</th>']
+        for v in values[i]:
+            color = _heat_color(v, max_v)
+            text  = str(int(v)) if v > 0 else ''
+            cells.append(f'<td style="background:{color}">{text}</td>')
+        rows.append('<tr>' + ''.join(cells) + '</tr>')
+
+    tbody = '<tbody>' + ''.join(rows) + '</tbody>'
+    return f'<div class="sticky-table-wrap"><table class="sticky-table">{header}{tbody}</table></div>'
+
+
+def build():
+    # --- Daten laden ---
+    pivot = _load_pivot()
 
     heroes    = list(pivot.index)
     scenarios = list(pivot.columns)
@@ -49,7 +84,7 @@ def build():
         showscale=True,
         colorbar=dict(title='Partien', thickness=15),
         hovertemplate='<b>%{y}</b> vs <b>%{x}</b>: %{customdata} Partien<extra></extra>',
-        visible=True,
+        visible=False,
     )
 
     # --- Sunburst-Daten aufbauen: Root → Held → Szenario → Held ---
@@ -108,7 +143,7 @@ def build():
         textfont=dict(size=11),
         insidetextorientation='radial',
         hovertemplate='<b>%{label}</b><br>%{value} Partien<extra></extra>',
-        visible=False,
+        visible=True,
     )
 
     col_width  = 36
@@ -119,51 +154,11 @@ def build():
     fig = go.Figure(data=[heatmap, sunburst])
 
     fig.update_layout(
-        title=dict(text='Helden × Schurken — Anzahl Partien', font=dict(size=16)),
+        title=dict(text='Helden \u2192 Szenarien \u2192 Helden', font=dict(size=16)),
         autosize=True,
-        height=fig_height,
+        height=850,
         dragmode=False,
-        xaxis=dict(
-            side='top',
-            tickangle=-45,
-            tickfont=dict(size=11),
-            categoryorder='array',
-            categoryarray=scenarios,
-        ),
-        yaxis=dict(
-            autorange='reversed',
-            tickfont=dict(size=11),
-        ),
-        margin=dict(l=220, r=80, t=160, b=40),
-        updatemenus=[dict(
-            type='buttons',
-            buttons=[
-                dict(
-                    label='Kreuztabelle',
-                    method='update',
-                    args=[
-                        {'visible': [True, False]},
-                        {'title': {'text': 'Helden \u00d7 Schurken \u2014 Anzahl Partien'},
-                         'height': fig_height,
-                         'margin': {'l': 220, 'r': 80, 't': 160, 'b': 40}},
-                    ],
-                ),
-                dict(
-                    label='Sunburst',
-                    method='update',
-                    args=[
-                        {'visible': [False, True]},
-                        {'title': {'text': 'Helden \u2192 Szenarien \u2192 Helden'},
-                         'height': 850,
-                         'margin': {'l': 10, 'r': 10, 't': 100, 'b': 10}},
-                    ],
-                ),
-            ],
-            direction='right',
-            x=0.0, xanchor='left', y=1.06, yanchor='bottom',
-            bgcolor='white', bordercolor='#aaaaaa', font=dict(size=12),
-            showactive=True,
-        )],
+        margin=dict(l=10, r=10, t=60, b=10),
     )
 
     return fig

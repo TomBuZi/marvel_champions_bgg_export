@@ -23,6 +23,58 @@ def _modular_sort_key(name):
     return (1, 0, name.lower())
 
 
+def _heat_color(v, max_v):
+    if v <= 0 or max_v <= 0:
+        return '#ffffff'
+    t = min(v / max_v, 1.0)
+    r = 255
+    g = int(255 * (1 - t * 0.8))
+    b = int(255 * (1 - t))
+    return f'rgb({r},{g},{b})'
+
+
+def _load_heatmap_pivot():
+    df = pd.read_csv('marvel_champions_scenario_modular_combos.csv', sep=';')
+    rows = []
+    for _, row in df.iterrows():
+        for mod in row['modulars'].split(' + '):
+            rows.append({'scenario': row['scenario'], 'modular': mod.strip(), 'count': row['count']})
+    df_exp = pd.DataFrame(rows)
+    df_exp = df_exp.groupby(['scenario', 'modular'])['count'].sum().reset_index()
+    pivot  = df_exp.pivot_table(index='scenario', columns='modular', values='count', fill_value=0)
+    scenario_rows = [s for s in SCENARIOS if s in pivot.index]
+    pivot = pivot.reindex(index=scenario_rows, fill_value=0)
+    pivot = pivot[pivot.sum(axis=1) > 0]
+    modular_cols = sorted(pivot.columns.tolist(), key=_modular_sort_key)
+    pivot = pivot.reindex(columns=modular_cols, fill_value=0)
+    return pivot
+
+
+def build_table_html():
+    """HTML-Tabelle mit sticky Row/Column-Headern für die mobile Kreuztabelle."""
+    pivot    = _load_heatmap_pivot()
+    scenarios = list(pivot.index)
+    modulars  = list(pivot.columns)
+    values    = pivot.values.tolist()
+    max_v     = max(max(row) for row in values) if values else 1
+
+    th_corner = '<th class="tbl-corner">Szenario / Modular</th>'
+    th_cols   = ''.join(f'<th class="tbl-col">{m}</th>' for m in modulars)
+    header    = f'<thead><tr>{th_corner}{th_cols}</tr></thead>'
+
+    rows = []
+    for i, scen in enumerate(scenarios):
+        cells = [f'<th class="tbl-row">{scen}</th>']
+        for v in values[i]:
+            color = _heat_color(v, max_v)
+            text  = str(int(v)) if v > 0 else ''
+            cells.append(f'<td style="background:{color}">{text}</td>')
+        rows.append('<tr>' + ''.join(cells) + '</tr>')
+
+    tbody = '<tbody>' + ''.join(rows) + '</tbody>'
+    return f'<div class="sticky-table-wrap"><table class="sticky-table">{header}{tbody}</table></div>'
+
+
 def build():
     df       = pd.read_csv('marvel_champions_scenario_modular_combos.csv', sep=';')
     df_heroes = pd.read_csv('marvel_champions_scenario_modular_hero.csv', sep=';')
@@ -195,51 +247,7 @@ def build():
         uniformtext=dict(mode='hide', minsize=8),
         dragmode=False,
         height=850,
-        margin=dict(l=10, r=10, t=100, b=10),
-        updatemenus=[dict(
-            type='buttons',
-            buttons=[
-                dict(
-                    label='Sunburst',
-                    method='update',
-                    args=[
-                        {'visible': [True, False, False]},
-                        {'title': {'text': 'Szenarien \u00d7 Modularkombinationen \u2014 Klick zum Reinzoomen'},
-                         'height': 850,
-                         'margin': {'l': 10, 'r': 10, 't': 100, 'b': 10}},
-                    ],
-                ),
-                dict(
-                    label='Kreuztabelle',
-                    method='update',
-                    args=[
-                        {'visible': [False, True, False]},
-                        {'title': {'text': 'Szenarien \u00d7 Modulars \u2014 Anzahl Partien'},
-                         'height': hm_height,
-                         'margin': {'l': 220, 'r': 80, 't': 160, 'b': 40},
-                         'xaxis': {'visible': True, 'side': 'top', 'tickangle': -45,
-                                   'tickfont': {'size': 11}, 'categoryorder': 'array',
-                                   'categoryarray': hm_modulars},
-                         'yaxis': {'visible': True, 'autorange': 'reversed',
-                                   'tickfont': {'size': 11}}},
-                    ],
-                ),
-                dict(
-                    label='Baumansicht',
-                    method='update',
-                    args=[
-                        {'visible': [False, False, True]},
-                        {'title': {'text': 'Szenarien \u2192 Modulars \u2192 Helden'},
-                         'height': ic_height,
-                         'margin': {'l': 10, 'r': 10, 't': 100, 'b': 10}},
-                    ],
-                ),
-            ],
-            direction='right',
-            x=0.0, xanchor='left', y=1.06, yanchor='bottom',
-            bgcolor='white', bordercolor='#aaaaaa', font=dict(size=12),
-            showactive=True,
-        )],
+        margin=dict(l=10, r=10, t=60, b=10),
     )
 
     return fig

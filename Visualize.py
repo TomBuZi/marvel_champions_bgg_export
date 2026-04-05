@@ -18,7 +18,7 @@ ASPECT_COLORS = {
 MARVEL_RED = '#E62429'
 
 
-def build():
+def build(mobile=False):
     # --- Daten laden ---
     df_heroes      = pd.read_csv('heroes_total.csv', sep=';')
     df_aspects     = pd.read_csv('marvel_champions_aspect_stats.csv', sep=';')
@@ -32,24 +32,57 @@ def build():
     top10_scenarios = df_scenarios.sort_values('count', ascending=False).head(10)
 
     # --- Subplots ---
-    fig = make_subplots(
-        rows=3, cols=2,
-        subplot_titles=(
-            'Top 10 Meistgespielte Helden',
-            'Verteilung der Aspekte',
-            'Top 10 Meistgespielte Szenarien',
-            'Gesamt Gewinnrate',
-            'Aspekt-Präferenz der Top 5 Helden',
-            'Spielaktivität über die Zeit',
-        ),
-        specs=[
-            [{'type': 'bar'},  {'type': 'pie'}],
-            [{'type': 'bar'},  {'type': 'pie'}],
-            [{'type': 'bar'},  {'type': 'scatter'}],
-        ],
-        vertical_spacing=0.12,
-        horizontal_spacing=0.1,
-    )
+    if mobile:
+        fig = make_subplots(
+            rows=6, cols=1,
+            subplot_titles=(
+                'Top 10 Meistgespielte Helden',
+                'Top 10 Meistgespielte Szenarien',
+                'Verteilung der Aspekte',
+                'Gesamt Gewinnrate',
+                'Aspekt-Präferenz der Top 5 Helden',
+                'Spielaktivität über die Zeit',
+            ),
+            specs=[
+                [{'type': 'bar'}],
+                [{'type': 'bar'}],
+                [{'type': 'pie'}],
+                [{'type': 'pie'}],
+                [{'type': 'bar'}],
+                [{'type': 'scatter'}],
+            ],
+            vertical_spacing=0.05,
+        )
+        r_heroes, r_scen, r_asp_pie, r_win_pie = 1, 2, 3, 4
+        r_asp_bar, c_asp_bar = 5, 1
+        r_time,    c_time    = 6, 1
+    else:
+        fig = make_subplots(
+            rows=3, cols=2,
+            subplot_titles=(
+                'Top 10 Meistgespielte Helden',
+                'Verteilung der Aspekte',
+                'Top 10 Meistgespielte Szenarien',
+                'Gesamt Gewinnrate',
+                'Aspekt-Präferenz der Top 5 Helden',
+                'Spielaktivität über die Zeit',
+            ),
+            specs=[
+                [{'type': 'bar'},  {'type': 'pie'}],
+                [{'type': 'bar'},  {'type': 'pie'}],
+                [{'type': 'bar'},  {'type': 'scatter'}],
+            ],
+            vertical_spacing=0.12,
+            horizontal_spacing=0.1,
+        )
+        r_heroes, r_scen, r_asp_pie, r_win_pie = 1, 2, 1, 2
+        r_asp_bar, c_asp_bar = 3, 1
+        r_time,    c_time    = 3, 2
+
+    c_heroes  = 1
+    c_scen    = 1
+    c_asp_pie = 1 if mobile else 2
+    c_win_pie = 1 if mobile else 2
 
     # 1. Top 10 Helden (horizontaler Balken)
     fig.add_trace(go.Bar(
@@ -58,8 +91,8 @@ def build():
         orientation='h',
         marker_color=MARVEL_RED,
         hovertemplate='<b>%{y}</b>: %{x} Spiele<extra></extra>',
-    ), row=1, col=1)
-    fig.update_yaxes(autorange='reversed', row=1, col=1)
+    ), row=r_heroes, col=c_heroes)
+    fig.update_yaxes(autorange='reversed', row=r_heroes, col=c_heroes)
 
     # 2. Aspekt-Donut
     aspect_colors_list = [ASPECT_COLORS.get(a, '#333333') for a in df_aspects['aspect']]
@@ -70,7 +103,7 @@ def build():
         marker=dict(colors=aspect_colors_list),
         textinfo='label+percent',
         hovertemplate='<b>%{label}</b>: %{value} (%{percent})<extra></extra>',
-    ), row=1, col=2)
+    ), row=r_asp_pie, col=c_asp_pie)
 
     # 3. Top 10 Szenarien (horizontaler Balken)
     fig.add_trace(go.Bar(
@@ -79,8 +112,8 @@ def build():
         orientation='h',
         marker_color='#5B2D8E',
         hovertemplate='<b>%{y}</b>: %{x} Spiele<extra></extra>',
-    ), row=2, col=1)
-    fig.update_yaxes(autorange='reversed', row=2, col=1)
+    ), row=r_scen, col=c_scen)
+    fig.update_yaxes(autorange='reversed', row=r_scen, col=c_scen)
 
     # 4. Gewinnrate (inkl. "Ohne Ergebnis" für nowinstats=1 oder kein Ergebnis)
     result_clean   = df_plays['result'].str.strip().str.lower()
@@ -107,7 +140,7 @@ def build():
         marker=dict(colors=list(pie_colors)),
         pull=list(pie_pull),
         hovertemplate='<b>%{label}</b>: %{value} (%{percent})<extra></extra>',
-    ), row=2, col=2)
+    ), row=r_win_pie, col=c_win_pie)
 
     # 5. Aspekt-Präferenz Top-5-Helden (gestapelter Balken)
     top5 = df_heroes.sort_values('Count', ascending=False).head(5)['Hero'].tolist()
@@ -124,7 +157,7 @@ def build():
             marker_color=ASPECT_COLORS.get(aspect, '#333333'),
             hovertemplate=f'<b>%{{x}}</b> – {aspect}: %{{y}}<extra></extra>',
             showlegend=True,
-        ), row=3, col=1)
+        ), row=r_asp_bar, col=c_asp_bar)
     fig.update_layout(barmode='stack')
 
     # 6. Spielaktivität über die Zeit
@@ -132,16 +165,13 @@ def build():
     plays_per_month  = df_plays.resample('ME', on='date').size().reset_index()
     plays_per_month.columns = ['date', 'count']
 
-    # Savitzky-Golay-Ausgleichskurve + lineare Prognose (letzte 12 Monate)
     y_hist = plays_per_month['count'].values.astype(float)
     n_hist = len(y_hist)
 
-    # Fenstergröße: ungerade, mindestens 3, maximal 7
     sg_window = min(7, n_hist if n_hist % 2 == 1 else n_hist - 1)
     sg_window = max(sg_window, 3)
     y_smooth  = np.maximum(savgol_filter(y_hist, window_length=sg_window, polyorder=2), 0)
 
-    # Lineare Regression über die letzten 12 Monate für die Prognose
     n_fit    = min(12, n_hist)
     x_fit    = np.arange(n_hist - n_fit, n_hist)
     coeffs   = np.polyfit(x_fit, y_hist[n_hist - n_fit:], 1)
@@ -155,7 +185,6 @@ def build():
     x_link = [plays_per_month['date'].iloc[-1], dates_fore[0]]
     y_link = [y_smooth[-1], y_fore[0]]
 
-    # Tatsächliche Werte
     fig.add_trace(go.Scatter(
         x=plays_per_month['date'], y=plays_per_month['count'],
         mode='lines+markers', name='Monatliche Spiele',
@@ -163,25 +192,22 @@ def build():
         line=dict(color=MARVEL_RED, width=2),
         hovertemplate='%{x|%b %Y}: %{y} Spiele<extra></extra>',
         showlegend=False,
-    ), row=3, col=2)
+    ), row=r_time, col=c_time)
 
-    # Ausgleichskurve (historisch)
     fig.add_trace(go.Scatter(
         x=plays_per_month['date'], y=y_smooth,
         mode='lines', name='Trend',
         line=dict(color='#FF8C00', width=2, dash='dash'),
         hovertemplate='%{x|%b %Y} Trend: %{y:.1f}<extra></extra>',
         showlegend=False,
-    ), row=3, col=2)
+    ), row=r_time, col=c_time)
 
-    # Verbindung Trend → Prognose
     fig.add_trace(go.Scatter(
         x=x_link, y=y_link,
         mode='lines', line=dict(color='#FF8C00', width=2, dash='dash'),
         showlegend=False, hoverinfo='skip',
-    ), row=3, col=2)
+    ), row=r_time, col=c_time)
 
-    # Prognose
     fig.add_trace(go.Scatter(
         x=dates_fore, y=y_fore,
         mode='lines+markers', name='Prognose (6 Monate)',
@@ -189,15 +215,19 @@ def build():
         marker=dict(color='#FF8C00', size=5, symbol='circle-open'),
         hovertemplate='%{x|%b %Y} Prognose: %{y:.1f}<extra></extra>',
         showlegend=False,
-    ), row=3, col=2)
+    ), row=r_time, col=c_time)
 
     # --- Layout ---
+    height = 2200 if mobile else 1200
+    legend_pos = dict(title='Aspekt', x=0.5, xanchor='center', y=-0.03, yanchor='top',
+                      orientation='h') if mobile else dict(title='Aspekt', x=1.02, y=0.17)
+
     fig.update_layout(
         title=dict(text='Marvel Champions — Statistik-Dashboard', font=dict(size=18)),
-        height=1200,
+        height=height,
         dragmode=False,
         showlegend=True,
-        legend=dict(title='Aspekt', x=1.02, y=0.17),
+        legend=legend_pos,
         template='plotly_white',
     )
 
