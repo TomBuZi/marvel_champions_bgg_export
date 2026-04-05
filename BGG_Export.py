@@ -187,11 +187,13 @@ if __name__ == "__main__":
     page = 1
     total_plays = None
 
-    unknown_heroes    = []  # (date, raw_text)
-    unknown_aspects   = []  # (date, raw_text)
-    unknown_scenarios = []  # (date, raw_text)
-    unknown_modulars  = []  # (date, raw_text)
-    missing_modulars  = []  # (date, scenario) — bekanntes Szenario, kein Modular im Kommentar
+    plays_no_hero     = []  # (date, "", comment) — Heldenfeld komplett leer
+    plays_no_villain  = []  # (date, "", comment) — Szenariofeld komplett leer
+    unknown_heroes    = []  # (date, raw_text, comment) — Heldentext vorhanden, aber nicht erkannt
+    unknown_aspects   = []  # (date, raw_text, comment) — Held erkannt, aber kein Aspekt
+    unknown_scenarios = []  # (date, raw_text, comment) — Szenariotext vorhanden, aber nicht erkannt
+    unknown_modulars  = []  # (date, raw_text, comment)
+    missing_modulars  = []  # (date, scenario, comment) — bekanntes Szenario, kein Modular im Kommentar
 
     while True:
         print(f"Lade Seite {page} ...")
@@ -238,6 +240,14 @@ if __name__ == "__main__":
     # Durch alle geladenen Partien gehen und die matches zählen
     for play in all_plays:
         scenario_clean = play["scenario"].strip().lower()
+
+        # Leeres Szenariofeld → eigene Kategorie
+        if not scenario_clean:
+            plays_no_villain.append((play["date"], "", play["comments"]))
+            scenario_counts["unknown scenario"] += 1
+            # Standard-Fallback zählen und nächste Partie
+            count_modular("Standard", modular_counts, set(), [], [False])
+            continue
 
         # Längstes Match ermitteln
         matched_scenario = find_longest_prefix_match(scenario_clean, SCENARIOS)
@@ -374,6 +384,12 @@ if __name__ == "__main__":
     for play in all_plays:
 
         text = (play["hero"] or "").strip()
+
+        # Leeres Heldenfeld → eigene Kategorie
+        if not text:
+            plays_no_hero.append((play["date"], "", play["comments"]))
+            continue
+
         text_lower = text.lower()
 
         # Alle Helden-Positionen finden, überlappende entfernen
@@ -513,27 +529,34 @@ if __name__ == "__main__":
         else:
             print(f"{label} (0): keine")
 
-    print("\n=== UNBEKANNTE EINTRÄGE ===")
-    _print_unknowns("Helden",            unknown_heroes)
-    _print_unknowns("Aspekte",           unknown_aspects)
-    _print_unknowns("Szenarien",         unknown_scenarios)
-    _print_unknowns("Modulars",          unknown_modulars)
-    _print_unknowns("Fehlende Modulars", missing_modulars)
+    print("\n=== UNBEKANNTE / FEHLENDE EINTRÄGE ===")
+    _print_unknowns("Plays ohne Held",          plays_no_hero)
+    _print_unknowns("Plays ohne Villain",        plays_no_villain)
+    _print_unknowns("Helden nicht erkannt",      unknown_heroes)
+    _print_unknowns("Helden ohne Aspekt",        unknown_aspects)
+    _print_unknowns("Szenarien nicht erkannt",   unknown_scenarios)
+    _print_unknowns("Modulars nicht erkannt",    unknown_modulars)
+    _print_unknowns("Fehlende Modulars",         missing_modulars)
 
     OUTFILE_UNKNOWN = "unrecognized_report.csv"
     with open(OUTFILE_UNKNOWN, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow(["category", "date", "value", "comment"])
+        for date, value, comment in sorted(plays_no_hero):
+            writer.writerow(["Kein Held", date, value, comment])
+        for date, value, comment in sorted(plays_no_villain):
+            writer.writerow(["Kein Villain", date, value, comment])
         for date, value, comment in sorted(unknown_heroes):
-            writer.writerow(["Held", date, value, comment])
+            writer.writerow(["Held nicht erkannt", date, value, comment])
         for date, value, comment in sorted(unknown_aspects):
-            writer.writerow(["Aspekt", date, value, comment])
+            writer.writerow(["Held ohne Aspekt", date, value, comment])
         for date, value, comment in sorted(unknown_scenarios):
-            writer.writerow(["Szenario", date, value, comment])
+            writer.writerow(["Szenario nicht erkannt", date, value, comment])
         for date, value, comment in sorted(unknown_modulars):
-            writer.writerow(["Modular", date, value, comment])
+            writer.writerow(["Modular nicht erkannt", date, value, comment])
         for date, value, comment in sorted(missing_modulars):
             writer.writerow(["Fehlendes Modular", date, value, comment])
 
-    if any([unknown_heroes, unknown_aspects, unknown_scenarios, unknown_modulars, missing_modulars]):
+    if any([plays_no_hero, plays_no_villain, unknown_heroes, unknown_aspects,
+            unknown_scenarios, unknown_modulars, missing_modulars]):
         print(f"\nBericht gespeichert als: {OUTFILE_UNKNOWN}")
