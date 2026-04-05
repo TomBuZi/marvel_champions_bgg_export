@@ -204,7 +204,7 @@ def build():
                     args=[
                         {'visible': [True, False, False]},
                         {'title': {'text': 'Szenarien \u00d7 Modularkombinationen \u2014 Klick zum Reinzoomen'},
-                         'width': 900, 'height': 850,
+                         'height': 850,
                          'margin': {'l': 10, 'r': 10, 't': 100, 'b': 10}},
                     ],
                 ),
@@ -214,7 +214,7 @@ def build():
                     args=[
                         {'visible': [False, True, False]},
                         {'title': {'text': 'Szenarien \u00d7 Modulars \u2014 Anzahl Partien'},
-                         'width': hm_width, 'height': hm_height,
+                         'height': hm_height,
                          'margin': {'l': 220, 'r': 80, 't': 160, 'b': 40},
                          'xaxis': {'visible': True, 'side': 'top', 'tickangle': -45,
                                    'tickfont': {'size': 11}, 'categoryorder': 'array',
@@ -229,7 +229,7 @@ def build():
                     args=[
                         {'visible': [False, False, True]},
                         {'title': {'text': 'Szenarien \u2192 Modulars \u2192 Helden'},
-                         'width': 900, 'height': ic_height,
+                         'height': ic_height,
                          'margin': {'l': 10, 'r': 10, 't': 100, 'b': 10}},
                     ],
                 ),

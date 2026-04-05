@@ -35,6 +35,7 @@ for i, fig in enumerate(figs):
     divs.append(fig.to_html(
         full_html=False,
         include_plotlyjs=include_js,
+        config={'responsive': True},
     ))
 
 tab_buttons = "\n    ".join(
@@ -51,6 +52,7 @@ html = """<!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Marvel Champions \u2014 Statistiken</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -65,6 +67,9 @@ html = """<!DOCTYPE html>
       position: sticky;
       top: 0;
       z-index: 100;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      flex-shrink: 0;
     }
     .tab-bar .title {
       color: #e62429;
@@ -86,6 +91,7 @@ html = """<!DOCTYPE html>
       border-bottom: 3px solid transparent;
       margin-bottom: -3px;
       transition: color 0.15s;
+      white-space: nowrap;
     }
     .tab-bar button:hover { color: #ffffff; }
     .tab-bar button.active {
@@ -94,7 +100,12 @@ html = """<!DOCTYPE html>
     }
 
     .tab-content { display: none; }
-    .tab-content.active { display: block; }
+    .tab-content.active { display: block; overflow-x: auto; }
+
+    @media (max-width: 600px) {
+      .tab-bar .title { font-size: 12px; padding: 12px 10px 12px 4px; }
+      .tab-bar button { padding: 12px 10px; font-size: 11px; }
+    }
   </style>
 </head>
 <body>

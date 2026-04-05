@@ -120,7 +120,7 @@ def build():
 
     fig.update_layout(
         title=dict(text='Helden × Schurken — Anzahl Partien', font=dict(size=16)),
-        width=fig_width,
+        autosize=True,
         height=fig_height,
         xaxis=dict(
             side='top',
@@ -143,7 +143,7 @@ def build():
                     args=[
                         {'visible': [True, False]},
                         {'title': {'text': 'Helden \u00d7 Schurken \u2014 Anzahl Partien'},
-                         'width': fig_width, 'height': fig_height,
+                         'height': fig_height,
                          'margin': {'l': 220, 'r': 80, 't': 160, 'b': 40}},
                     ],
                 ),
@@ -153,7 +153,7 @@ def build():
                     args=[
                         {'visible': [False, True]},
                         {'title': {'text': 'Helden \u2192 Szenarien \u2192 Helden'},
-                         'width': 900, 'height': 850,
+                         'height': 850,
                          'margin': {'l': 10, 'r': 10, 't': 100, 'b': 10}},
                     ],
                 ),

@@ -1,6 +1,11 @@
 name: Update Marvel Champions Stats
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '**.py'
+      - 'config/**'
   schedule:
     - cron: '0 6 * * 1'   # Every Monday 06:00 UTC
   workflow_dispatch:        # Manual trigger from GitHub UI
