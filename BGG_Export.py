@@ -190,7 +190,6 @@ if __name__ == "__main__":
     plays_no_hero     = []  # (date, "", comment) — Heldenfeld komplett leer
     plays_no_villain  = []  # (date, "", comment) — Szenariofeld komplett leer
     unknown_heroes    = []  # (date, raw_text, comment) — Heldentext vorhanden, aber nicht erkannt
-    unknown_aspects   = []  # (date, raw_text, comment) — Held erkannt, aber kein Aspekt
     unknown_scenarios = []  # (date, raw_text, comment) — Szenariotext vorhanden, aber nicht erkannt
     unknown_modulars  = []  # (date, raw_text, comment)
     missing_modulars  = []  # (date, scenario, comment) — bekanntes Szenario, kein Modular im Kommentar
@@ -260,24 +259,29 @@ if __name__ == "__main__":
             scenario_counts["unknown scenario"] += 1
             unknown_scenarios.append((play["date"], play["scenario"], play["comments"]))
 
-        # Suchen nach Modulars, bis keine mehr gefunden wurden
-        modular_found       = True
+        # Suchen nach Modulars, Wort für Wort
         standard_found_ref  = [False]
         matched_in_comments = set()   # Lowercase-Set für Deduplizierung
         counted_this_play   = []      # Originalnamen in Reihenfolge der Zählung
 
-        while modular_found:
-            modular_found = False
+        while scenario_clean:
+            # Führende Trennzeichen (Leerzeichen, +, Komma) überspringen
+            scenario_clean = re.sub(r'^[\s+,]+', '', scenario_clean)
+            if not scenario_clean:
+                break
+
             matched_modular = find_longest_prefix_match(scenario_clean, MODULARS)
             if matched_modular:
-                modular_found = True
-
-            if matched_modular:
                 count_modular(matched_modular, modular_counts, matched_in_comments, counted_this_play, standard_found_ref)
-                scenario_clean = scenario_clean[len(matched_modular):].strip()
-
-            if not matched_modular and len(scenario_clean) > 0:
-                unknown_modulars.append((play["date"], scenario_clean, play["comments"]))
+                scenario_clean = scenario_clean[len(matched_modular):]
+            else:
+                # Erstes Wort nicht erkannt → einzeln melden, nächstes Wort versuchen
+                m = re.match(r'(\S+)(.*)', scenario_clean, re.DOTALL)
+                if m:
+                    unknown_modulars.append((play["date"], m.group(1), play["comments"]))
+                    scenario_clean = m.group(2)
+                else:
+                    break
 
         # Default-Modulars: wenn nichts oder nur Schwierigkeitsgrad-Modulars im Kommentar standen
         if matched_scenario and matched_in_comments.issubset(DIFFICULTY_MODULARS):
@@ -430,20 +434,12 @@ if __name__ == "__main__":
                 # Multi-aspect hero: use all found aspects; fall back to defaults if none found
                 aspects_to_count = possible_aspects or HERO_DEFAULT_ASPECTS[canonical]
             else:
-                # Regular hero: use first found aspect only
-                aspects_to_count = [possible_aspects[0]] if possible_aspects else [""]
+                # Regular hero: use first found aspect only; fall back to Precon if none found
+                aspects_to_count = [possible_aspects[0]] if possible_aspects else ["Precon"]
 
             for asp in aspects_to_count:
                 key = (canonical, asp)
                 hero_aspect_counts[key] = hero_aspect_counts.get(key, 0) + 1
-
-        # Unknown aspects: flag if any hero in this play needs explicit aspects but none were found
-        if not aspect_positions:
-            for _, h in hero_positions:
-                c = HERO_ALIASES.get(h, h)
-                if c not in HERO_DEFAULT_ASPECTS or not HERO_DEFAULT_ASPECTS[c]:
-                    unknown_aspects.append((play["date"], text, play["comments"]))
-                    break
 
     # CSV: Gesamtzahl pro Held
     with open("heroes_total.csv", "w", encoding="utf-8", newline="") as f:
@@ -533,7 +529,6 @@ if __name__ == "__main__":
     _print_unknowns("Plays ohne Held",          plays_no_hero)
     _print_unknowns("Plays ohne Villain",        plays_no_villain)
     _print_unknowns("Helden nicht erkannt",      unknown_heroes)
-    _print_unknowns("Helden ohne Aspekt",        unknown_aspects)
     _print_unknowns("Szenarien nicht erkannt",   unknown_scenarios)
     _print_unknowns("Modulars nicht erkannt",    unknown_modulars)
     _print_unknowns("Fehlende Modulars",         missing_modulars)
@@ -548,8 +543,6 @@ if __name__ == "__main__":
             writer.writerow(["Kein Villain", date, value, comment])
         for date, value, comment in sorted(unknown_heroes):
             writer.writerow(["Held nicht erkannt", date, value, comment])
-        for date, value, comment in sorted(unknown_aspects):
-            writer.writerow(["Held ohne Aspekt", date, value, comment])
         for date, value, comment in sorted(unknown_scenarios):
             writer.writerow(["Szenario nicht erkannt", date, value, comment])
         for date, value, comment in sorted(unknown_modulars):
@@ -557,6 +550,6 @@ if __name__ == "__main__":
         for date, value, comment in sorted(missing_modulars):
             writer.writerow(["Fehlendes Modular", date, value, comment])
 
-    if any([plays_no_hero, plays_no_villain, unknown_heroes, unknown_aspects,
+    if any([plays_no_hero, plays_no_villain, unknown_heroes,
             unknown_scenarios, unknown_modulars, missing_modulars]):
         print(f"\nBericht gespeichert als: {OUTFILE_UNKNOWN}")
