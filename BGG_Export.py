@@ -461,8 +461,22 @@ if __name__ == "__main__":
 
     print("CSV geschrieben: heroes_aspects.csv")
 
-    # CSV: Kombinationen Held + Szenario
-    hero_scenario_counts = {}
+    # CSV: Kombinationen Held + Szenario (inkl. Win/Loss/Incomplete)
+    WIN_KEYWORDS  = {"won", "win", "sieg", "victory", "gewonnen"}
+    LOSS_KEYWORDS = {"lost", "loss", "lose", "defeat", "verloren", "niederlage"}
+
+    def classify_result(play):
+        if str(play.get("incomplete", "0")) == "1":
+            return "incomplete"
+        result_lower = (play.get("result") or "").strip().lower()
+        if result_lower in WIN_KEYWORDS or any(result_lower.startswith(k) for k in WIN_KEYWORDS):
+            return "win"
+        if result_lower in LOSS_KEYWORDS or any(result_lower.startswith(k) for k in LOSS_KEYWORDS):
+            return "loss"
+        return "incomplete"  # Unklar → als ungewertet behandeln
+
+    hero_scenario_counts  = {}   # (hero, scenario)           → total
+    hero_scenario_results = {}   # (hero, scenario, result)   → count
 
     for play in all_plays:
         text = (play["hero"] or "").strip()
@@ -477,10 +491,14 @@ if __name__ == "__main__":
         if not matched_scenario:
             continue
 
+        result_cat = classify_result(play)
+
         for _, hero in hero_positions:
             canonical = HERO_ALIASES.get(hero, hero)
             key = (canonical, matched_scenario)
             hero_scenario_counts[key] = hero_scenario_counts.get(key, 0) + 1
+            rkey = (canonical, matched_scenario, result_cat)
+            hero_scenario_results[rkey] = hero_scenario_results.get(rkey, 0) + 1
 
     with open("heroes_scenarios.csv", "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, delimiter=";")
@@ -489,6 +507,18 @@ if __name__ == "__main__":
             writer.writerow([hero, scenario, count])
 
     print("CSV geschrieben: heroes_scenarios.csv")
+
+    with open("heroes_scenarios_results.csv", "w", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f, delimiter=";")
+        writer.writerow(["Hero", "Scenario", "Win", "Loss", "Incomplete"])
+        # Alle (hero, scenario)-Paare sammeln und W/L/I auflösen
+        for (hero, scenario), total in sorted(hero_scenario_counts.items(), key=lambda x: x[1], reverse=True):
+            w = hero_scenario_results.get((hero, scenario, "win"),        0)
+            l = hero_scenario_results.get((hero, scenario, "loss"),       0)
+            i = hero_scenario_results.get((hero, scenario, "incomplete"), 0)
+            writer.writerow([hero, scenario, w, l, i])
+
+    print("CSV geschrieben: heroes_scenarios_results.csv")
 
     # --- ASPEKT-STATISTIK --- #
     # Direkt aus hero_aspect_counts ableiten, damit Defaults (z.B. Adam Warlock) korrekt gezählt werden

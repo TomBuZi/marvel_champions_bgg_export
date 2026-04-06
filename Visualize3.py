@@ -25,6 +25,31 @@ def _load_pivot():
     return pivot
 
 
+def _load_results():
+    """Gibt dict {(hero, scenario): (win, loss, incomplete)} zurück."""
+    try:
+        df = pd.read_csv('heroes_scenarios_results.csv', sep=';')
+    except FileNotFoundError:
+        return {}
+    result = {}
+    for _, row in df.iterrows():
+        result[(row['Hero'], row['Scenario'])] = (
+            int(row['Win']), int(row['Loss']), int(row['Incomplete'])
+        )
+    return result
+
+
+def _fmt_result(total, w, l, i):
+    """Formatiert Zellentext: N[W/L/I], N[W/L] oder N[N]."""
+    if total == 0:
+        return ''
+    if i > 0:
+        return f'{total}[{w}/{l}/{i}]'
+    if l > 0:
+        return f'{total}[{w}/{l}]'
+    return f'{total}[{total}]'
+
+
 def _heat_color(v, max_v):
     if v <= 0 or max_v <= 0:
         return '#ffffff'
@@ -38,14 +63,26 @@ def _heat_color(v, max_v):
 def build_table_html():
     """Sortierbare HTML-Tabelle mit sticky Row/Column-Headern."""
     pivot     = _load_pivot()
+    results   = _load_results()
     heroes    = list(pivot.index)
     scenarios = list(pivot.columns)
     values    = [[int(v) for v in row] for row in pivot.values.tolist()]
     max_v     = max(max(row) for row in values) if values else 1
 
+    # Zellentexte mit W/L/I-Aufschlüsselung
+    labels = []
+    for hero in heroes:
+        row_labels = []
+        for scenario in scenarios:
+            total = pivot.at[hero, scenario]
+            w, l, i = results.get((hero, scenario), (0, 0, 0))
+            row_labels.append(_fmt_result(total, w, l, i))
+        labels.append(row_labels)
+
     heroes_js    = json.dumps(heroes,    ensure_ascii=False)
     scenarios_js = json.dumps(scenarios, ensure_ascii=False)
     values_js    = json.dumps(values)
+    labels_js    = json.dumps(labels)
 
     return f"""<div class="sticky-table-wrap">
   <table class="sticky-table" id="viz3-crosstable"></table>
@@ -55,6 +92,7 @@ def build_table_html():
   var heroes    = {heroes_js};
   var scenarios = {scenarios_js};
   var values    = {values_js};
+  var labels    = {labels_js};
   var maxV      = {int(max_v)};
   var state     = {{type: null, idx: -1}};
 
@@ -83,7 +121,7 @@ def build_table_html():
            + heroes[r] + (act?' \u2193':'') + '</th>';
       si.forEach(function(s) {{
         var v = values[r][s];
-        h += '<td style="background:'+heatColor(v)+'">'+(v>0?v:'')+'</td>';
+        h += '<td style="background:'+heatColor(v)+'">' + labels[r][s] + '</td>';
       }});
       h += '</tr>';
     }});
