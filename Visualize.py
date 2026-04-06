@@ -156,7 +156,7 @@ def build(mobile=False):
             y=pivot[aspect].tolist(),
             marker_color=ASPECT_COLORS.get(aspect, '#333333'),
             hovertemplate=f'<b>%{{x}}</b> – {aspect}: %{{y}}<extra></extra>',
-            showlegend=True,
+            showlegend=False,
         ), row=r_asp_bar, col=c_asp_bar)
     fig.update_layout(barmode='stack')
 
@@ -225,7 +225,8 @@ def build(mobile=False):
         title=dict(text='Marvel Champions — Statistik-Dashboard', font=dict(size=18)),
         height=height,
         dragmode=False,
-       template='plotly_white',
+        showlegend=False,
+        template='plotly_white',
     )
 
     return fig

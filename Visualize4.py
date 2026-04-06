@@ -51,28 +51,74 @@ def _load_heatmap_pivot():
 
 
 def build_table_html():
-    """HTML-Tabelle mit sticky Row/Column-Headern für die mobile Kreuztabelle."""
-    pivot    = _load_heatmap_pivot()
+    """Sortierbare HTML-Tabelle mit sticky Row/Column-Headern."""
+    pivot     = _load_heatmap_pivot()
     scenarios = list(pivot.index)
     modulars  = list(pivot.columns)
-    values    = pivot.values.tolist()
+    values    = [[int(v) for v in row] for row in pivot.values.tolist()]
     max_v     = max(max(row) for row in values) if values else 1
 
-    th_corner = '<th class="tbl-corner">Szenario / Modular</th>'
-    th_cols   = ''.join(f'<th class="tbl-col">{m}</th>' for m in modulars)
-    header    = f'<thead><tr>{th_corner}{th_cols}</tr></thead>'
+    scenarios_js = json.dumps(scenarios, ensure_ascii=False)
+    modulars_js  = json.dumps(modulars,  ensure_ascii=False)
+    values_js    = json.dumps(values)
 
-    rows = []
-    for i, scen in enumerate(scenarios):
-        cells = [f'<th class="tbl-row">{scen}</th>']
-        for v in values[i]:
-            color = _heat_color(v, max_v)
-            text  = str(int(v)) if v > 0 else ''
-            cells.append(f'<td style="background:{color}">{text}</td>')
-        rows.append('<tr>' + ''.join(cells) + '</tr>')
+    return f"""<div class="sticky-table-wrap">
+  <table class="sticky-table" id="viz4-crosstable"></table>
+</div>
+<script>
+(function() {{
+  var scenarios = {scenarios_js};
+  var modulars  = {modulars_js};
+  var values    = {values_js};
+  var maxV      = {int(max_v)};
+  var state     = {{type: null, idx: -1}};
 
-    tbody = '<tbody>' + ''.join(rows) + '</tbody>'
-    return f'<div class="sticky-table-wrap"><table class="sticky-table">{header}{tbody}</table></div>'
+  function heatColor(v) {{
+    if (v <= 0) return '#ffffff';
+    var t = Math.min(v / maxV, 1.0);
+    return 'rgb(255,' + Math.round(255*(1-t*0.8)) + ',' + Math.round(255*(1-t)) + ')';
+  }}
+
+  function render() {{
+    var si = scenarios.map(function(_,i){{return i;}});
+    var mi = modulars.map(function(_,i){{return i;}});
+    if (state.type==='col') si.sort(function(a,b){{return values[b][state.idx]-values[a][state.idx];}});
+    if (state.type==='row') mi.sort(function(a,b){{return values[state.idx][b]-values[state.idx][a];}});
+
+    var h = '<thead><tr><th class="tbl-corner">Szenario / Modular</th>';
+    mi.forEach(function(m) {{
+      var act = state.type==='col' && state.idx===m;
+      h += '<th class="tbl-col'+(act?' tbl-sort-active':'')+'" onclick="Viz4Sort.col('+m+')">'
+           + modulars[m] + (act?' \u2193':'') + '</th>';
+    }});
+    h += '</tr></thead><tbody>';
+    si.forEach(function(r) {{
+      var act = state.type==='row' && state.idx===r;
+      h += '<tr><th class="tbl-row'+(act?' tbl-sort-active':'')+'" onclick="Viz4Sort.row('+r+')">'
+           + scenarios[r] + (act?' \u2193':'') + '</th>';
+      mi.forEach(function(m) {{
+        var v = values[r][m];
+        h += '<td style="background:'+heatColor(v)+'">'+(v>0?v:'')+'</td>';
+      }});
+      h += '</tr>';
+    }});
+    h += '</tbody>';
+    document.getElementById('viz4-crosstable').innerHTML = h;
+  }}
+
+  window.Viz4Sort = {{
+    col: function(i) {{
+      state = (state.type==='col'&&state.idx===i) ? {{type:null,idx:-1}} : {{type:'col',idx:i}};
+      render();
+    }},
+    row: function(i) {{
+      state = (state.type==='row'&&state.idx===i) ? {{type:null,idx:-1}} : {{type:'row',idx:i}};
+      render();
+    }}
+  }};
+  render();
+}})();
+</script>"""
 
 
 def build():
