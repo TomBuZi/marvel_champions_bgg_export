@@ -176,6 +176,41 @@ html = f"""<!DOCTYPE html>
     .tbl-sort-active {{ background: #9b1d20 !important; }}
     .tbl-sort-active:hover {{ background: #b52428 !important; }}
 
+    /* ── GitHub Update-Button ── */
+    .update-btn {{
+      background: transparent; border: 1px solid #555; border-radius: 4px;
+      color: #cccccc; cursor: pointer; font-size: 16px; line-height: 1;
+      padding: 5px 9px; margin-left: 8px; flex-shrink: 0;
+      transition: color 0.15s, border-color 0.15s;
+    }}
+    .update-btn:hover:not(:disabled) {{ color: #e62429; border-color: #e62429; }}
+    .update-btn:disabled {{ opacity: 0.5; cursor: default; }}
+
+    /* ── Token-Modal ── */
+    .gh-modal {{
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65); z-index: 9000;
+      align-items: center; justify-content: center;
+    }}
+    .gh-modal.open {{ display: flex; }}
+    .gh-modal-box {{
+      background: #fff; border-radius: 8px; padding: 24px 28px;
+      max-width: 420px; width: 90%; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }}
+    .gh-modal-box h3 {{ margin-bottom: 10px; color: #16213e; }}
+    .gh-modal-box p  {{ font-size: 13px; color: #444; margin-bottom: 14px; line-height: 1.5; }}
+    .gh-modal-box input {{
+      width: 100%; padding: 9px 10px; border: 1px solid #ccc;
+      border-radius: 4px; font-size: 13px; margin-bottom: 16px;
+    }}
+    .gh-modal-actions {{ display: flex; gap: 10px; justify-content: flex-end; }}
+    .gh-modal-actions button {{
+      padding: 8px 18px; border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: bold;
+    }}
+    .gh-btn-cancel {{ background: #eee; border: 1px solid #ccc; color: #444; }}
+    .gh-btn-save   {{ background: #16213e; border: 1px solid #16213e; color: #fff; }}
+    .gh-btn-save:hover {{ background: #e62429; border-color: #e62429; }}
+
     /* ── Viz3+Viz4-Switch immer sichtbar (ersetzt Plotly-updatemenus) ── */
     #viz3-switch, #viz4-switch {{ display: flex; }}
 
@@ -197,6 +232,7 @@ html = f"""<!DOCTYPE html>
     <div class="tab-bar">
       <span class="title">Marvel Champions</span>
       <span class="active-label" id="active-label"></span>
+      <button class="update-btn" id="update-btn" onclick="ghUpdate()" title="Daten &amp; Visualisierung aktualisieren">&#x27F3;</button>
       <button class="burger-btn" id="burger-btn" onclick="toggleMenu()" aria-label="Navigation">&#9776;</button>
     </div>
     <nav class="nav-menu" id="nav-menu">
@@ -234,6 +270,21 @@ html = f"""<!DOCTYPE html>
     </div>
     <div class="viz-plotly" id="viz4-plotly">{div4}</div>
     <div class="viz-table"  id="viz4-table">{table4_html}</div>
+  </div>
+
+  <!-- GitHub Token Modal -->
+  <div class="gh-modal" id="gh-modal">
+    <div class="gh-modal-box">
+      <h3>GitHub Token einrichten</h3>
+      <p>Damit der Update-Button den GitHub Actions Workflow starten kann, wird ein
+         <strong>Personal Access Token</strong> mit dem Scope <code>workflow</code>
+         ben&ouml;tigt.<br>Das Token wird nur lokal in deinem Browser gespeichert.</p>
+      <input type="password" id="gh-token-input" placeholder="ghp_..." autocomplete="off">
+      <div class="gh-modal-actions">
+        <button class="gh-btn-cancel" onclick="ghCancelModal()">Abbrechen</button>
+        <button class="gh-btn-save"   onclick="ghSaveToken()">Speichern &amp; Starten</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -307,6 +358,81 @@ html = f"""<!DOCTYPE html>
           Plotly.Plots.resize(plotDiv);
         }}
       }}
+    }}
+
+    // ── GitHub Actions Trigger ──
+    var GH_API = 'https://api.github.com/repos/TomBuZi/marvel_champions_bgg_export/actions/workflows/update.yml/dispatches';
+
+    function ghUpdate() {{
+      var token = localStorage.getItem('gh_token');
+      if (token) {{
+        triggerWorkflow(token);
+      }} else {{
+        document.getElementById('gh-modal').classList.add('open');
+        document.getElementById('gh-token-input').focus();
+      }}
+    }}
+
+    function ghSaveToken() {{
+      var token = document.getElementById('gh-token-input').value.trim();
+      if (!token) return;
+      localStorage.setItem('gh_token', token);
+      document.getElementById('gh-modal').classList.remove('open');
+      triggerWorkflow(token);
+    }}
+
+    function ghCancelModal() {{
+      document.getElementById('gh-modal').classList.remove('open');
+    }}
+
+    document.addEventListener('keydown', function(e) {{
+      if (e.key === 'Enter' && document.getElementById('gh-modal').classList.contains('open')) {{
+        ghSaveToken();
+      }}
+    }});
+
+    function triggerWorkflow(token) {{
+      var btn = document.getElementById('update-btn');
+      btn.disabled = true;
+      btn.textContent = '\u23f3';
+      fetch(GH_API, {{
+        method: 'POST',
+        headers: {{
+          'Authorization': 'Bearer ' + token,
+          'Accept': 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28',
+          'Content-Type': 'application/json'
+        }},
+        body: JSON.stringify({{ ref: 'main' }})
+      }})
+      .then(function(r) {{
+        if (r.status === 204) {{
+          btn.textContent = '\u2713';
+          btn.title = 'Gestartet! GitHub Actions l\u00e4uft...';
+          setTimeout(function() {{
+            btn.textContent = '\u27f3';
+            btn.title = 'Daten & Visualisierung aktualisieren';
+            btn.disabled = false;
+          }}, 4000);
+        }} else if (r.status === 401) {{
+          localStorage.removeItem('gh_token');
+          btn.textContent = '\u27f3';
+          btn.disabled = false;
+          alert('Token ung\u00fcltig oder abgelaufen. Bitte erneut eingeben.');
+          document.getElementById('gh-modal').classList.add('open');
+        }} else {{
+          r.json().then(function(d) {{
+            btn.textContent = '\u27f3';
+            btn.disabled = false;
+            alert('Fehler ' + r.status + ': ' + (d.message || 'Unbekannter Fehler'));
+          }});
+        }}
+      }})
+      .catch(function(err) {{
+        btn.textContent = '\u27f3';
+        btn.disabled = false;
+        alert('Netzwerkfehler: ' + err.message);
+      }});
     }}
 
     showTab(0);
