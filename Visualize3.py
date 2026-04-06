@@ -36,28 +36,74 @@ def _heat_color(v, max_v):
 
 
 def build_table_html():
-    """HTML-Tabelle mit sticky Row/Column-Headern für die mobile Kreuztabelle."""
-    pivot = _load_pivot()
+    """Sortierbare HTML-Tabelle mit sticky Row/Column-Headern."""
+    pivot     = _load_pivot()
     heroes    = list(pivot.index)
     scenarios = list(pivot.columns)
-    values    = pivot.values.tolist()
+    values    = [[int(v) for v in row] for row in pivot.values.tolist()]
     max_v     = max(max(row) for row in values) if values else 1
 
-    th_corner = '<th class="tbl-corner">Held / Szenario</th>'
-    th_cols   = ''.join(f'<th class="tbl-col">{s}</th>' for s in scenarios)
-    header    = f'<thead><tr>{th_corner}{th_cols}</tr></thead>'
+    heroes_js    = json.dumps(heroes,    ensure_ascii=False)
+    scenarios_js = json.dumps(scenarios, ensure_ascii=False)
+    values_js    = json.dumps(values)
 
-    rows = []
-    for i, hero in enumerate(heroes):
-        cells = [f'<th class="tbl-row">{hero}</th>']
-        for v in values[i]:
-            color = _heat_color(v, max_v)
-            text  = str(int(v)) if v > 0 else ''
-            cells.append(f'<td style="background:{color}">{text}</td>')
-        rows.append('<tr>' + ''.join(cells) + '</tr>')
+    return f"""<div class="sticky-table-wrap">
+  <table class="sticky-table" id="viz3-crosstable"></table>
+</div>
+<script>
+(function() {{
+  var heroes    = {heroes_js};
+  var scenarios = {scenarios_js};
+  var values    = {values_js};
+  var maxV      = {int(max_v)};
+  var state     = {{type: null, idx: -1}};
 
-    tbody = '<tbody>' + ''.join(rows) + '</tbody>'
-    return f'<div class="sticky-table-wrap"><table class="sticky-table">{header}{tbody}</table></div>'
+  function heatColor(v) {{
+    if (v <= 0) return '#ffffff';
+    var t = Math.min(v / maxV, 1.0);
+    return 'rgb(255,' + Math.round(255*(1-t*0.8)) + ',' + Math.round(255*(1-t)) + ')';
+  }}
+
+  function render() {{
+    var hi = heroes.map(function(_,i){{return i;}});
+    var si = scenarios.map(function(_,i){{return i;}});
+    if (state.type==='col') hi.sort(function(a,b){{return values[b][state.idx]-values[a][state.idx];}});
+    if (state.type==='row') si.sort(function(a,b){{return values[state.idx][b]-values[state.idx][a];}});
+
+    var h = '<thead><tr><th class="tbl-corner">Held / Szenario</th>';
+    si.forEach(function(s) {{
+      var act = state.type==='col' && state.idx===s;
+      h += '<th class="tbl-col'+(act?' tbl-sort-active':'')+'" onclick="Viz3Sort.col('+s+')">'
+           + scenarios[s] + (act?' \u2193':'') + '</th>';
+    }});
+    h += '</tr></thead><tbody>';
+    hi.forEach(function(r) {{
+      var act = state.type==='row' && state.idx===r;
+      h += '<tr><th class="tbl-row'+(act?' tbl-sort-active':'')+'" onclick="Viz3Sort.row('+r+')">'
+           + heroes[r] + (act?' \u2193':'') + '</th>';
+      si.forEach(function(s) {{
+        var v = values[r][s];
+        h += '<td style="background:'+heatColor(v)+'">'+(v>0?v:'')+'</td>';
+      }});
+      h += '</tr>';
+    }});
+    h += '</tbody>';
+    document.getElementById('viz3-crosstable').innerHTML = h;
+  }}
+
+  window.Viz3Sort = {{
+    col: function(i) {{
+      state = (state.type==='col'&&state.idx===i) ? {{type:null,idx:-1}} : {{type:'col',idx:i}};
+      render();
+    }},
+    row: function(i) {{
+      state = (state.type==='row'&&state.idx===i) ? {{type:null,idx:-1}} : {{type:'row',idx:i}};
+      render();
+    }}
+  }};
+  render();
+}})();
+</script>"""
 
 
 def build():

@@ -168,8 +168,9 @@ def build(mobile=False):
     y_hist = plays_per_month['count'].values.astype(float)
     n_hist = len(y_hist)
 
-    sg_window = min(7, n_hist if n_hist % 2 == 1 else n_hist - 1)
-    sg_window = max(sg_window, 3)
+    raw       = max(n_hist // 3, 9)
+    sg_window = raw if raw % 2 == 1 else raw + 1
+    sg_window = min(sg_window, n_hist if n_hist % 2 == 1 else n_hist - 1)
     y_smooth  = np.maximum(savgol_filter(y_hist, window_length=sg_window, polyorder=2), 0)
 
     n_fit    = min(12, n_hist)
@@ -219,16 +220,12 @@ def build(mobile=False):
 
     # --- Layout ---
     height = 2200 if mobile else 1200
-    legend_pos = dict(title='Aspekt', x=0.5, xanchor='center', y=-0.03, yanchor='top',
-                      orientation='h') if mobile else dict(title='Aspekt', x=1.02, y=0.17)
 
     fig.update_layout(
         title=dict(text='Marvel Champions — Statistik-Dashboard', font=dict(size=18)),
         height=height,
         dragmode=False,
-        showlegend=True,
-        legend=legend_pos,
-        template='plotly_white',
+       template='plotly_white',
     )
 
     return fig

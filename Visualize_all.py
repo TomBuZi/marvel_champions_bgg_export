@@ -169,6 +169,13 @@ html = f"""<!DOCTYPE html>
     .sticky-table td {{ text-align: center; }}
     .sticky-table tbody tr:nth-child(even) td {{ background-color: inherit; }}
 
+    /* ── Sortierbare Kreuztabellen ── */
+    .tbl-col, .tbl-row {{ cursor: pointer; user-select: none; }}
+    .tbl-col:hover {{ background: #1e3060 !important; }}
+    .tbl-row:hover {{ background: #1e3060 !important; }}
+    .tbl-sort-active {{ background: #9b1d20 !important; }}
+    .tbl-sort-active:hover {{ background: #b52428 !important; }}
+
     /* ── Viz3+Viz4-Switch immer sichtbar (ersetzt Plotly-updatemenus) ── */
     #viz3-switch, #viz4-switch {{ display: flex; }}
 
