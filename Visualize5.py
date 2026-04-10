@@ -17,11 +17,13 @@ CAMPAIGNS = load_config("campaigns.json")
 STATUS_COLORS = {
     "completed":   "#2E7D32",  # grün
     "in_progress": "#F9A825",  # amber
+    "lost":        "#C62828",  # dunkelrot
     "abandoned":   "#757575",  # grau
 }
 STATUS_LABELS = {
     "completed":   "Abgeschlossen",
     "in_progress": "Laufend",
+    "lost":        "Verloren",
     "abandoned":   "Abgebrochen",
 }
 
@@ -284,8 +286,8 @@ def build_summary_html():
             )
             plays = _parse_played(row["scenarios_played"])
             played_inline = " ".join(
-                f"<span title='{p['scenario']} ({p['date']})' "
-                f"style='color:{RESULT_COLORS[p['result']]};font-weight:bold'>"
+                f"<span title='{p['scenario']}&#10;{p['date']}&#10;{RESULT_LABELS[p['result']]}' "
+                f"style='color:{RESULT_COLORS[p['result']]};font-weight:bold;cursor:default'>"
                 f"{RESULT_ICONS[p['result']]}</span>"
                 for p in plays
             )

@@ -602,6 +602,23 @@ if __name__ == "__main__":
 
     campaign_attempts = []
 
+    def _classify_incomplete(att, scen_list, still_recent=False):
+        """Gibt 'in_progress', 'lost' oder 'abandoned' zurück.
+
+        'lost': Expert/Expert-II-Partie, die am letzten Szenario der Kampagne
+        scheiterte — die Kampagne gilt als gespielt und verloren, nicht als
+        abgebrochen.  Gilt nur wenn der Versuch nicht mehr laufend ist.
+        """
+        if still_recent:
+            return "in_progress"
+        last_scen = scen_list[-1]
+        last_plays = [p for p in att["plays"] if p["scenario"] == last_scen]
+        if (last_plays
+                and any(p["result"] == "loss" for p in last_plays)
+                and any("expert" in p.get("comments", "") for p in last_plays)):
+            return "lost"
+        return "abandoned"
+
     def _qualifies(att, scen_list):
         """Gibt True zurück, wenn der Versuch als Kampagne zählt.
 
@@ -650,7 +667,7 @@ if __name__ == "__main__":
                 except ValueError:
                     _gap = 0
                 if _gap > GAP_DAYS or (scen_idx == 0 and current_idx > 0):
-                    _finalize_attempt(current, "abandoned")
+                    _finalize_attempt(current, _classify_incomplete(current, scen_list))
                     if _qualifies(current, scen_list):
                         campaign_attempts.append(current)
                     current     = None
@@ -682,11 +699,8 @@ if __name__ == "__main__":
                 _last_dt = _dt.strptime(current["plays"][-1]["date"], "%Y-%m-%d")
             except ValueError:
                 _last_dt = None
-            _still_recent = _max_dt and _last_dt and (_max_dt - _last_dt).days <= 90
-            if _still_recent:
-                _finalize_attempt(current, "in_progress")
-            else:
-                _finalize_attempt(current, "abandoned")
+            _still_recent = bool(_max_dt and _last_dt and (_max_dt - _last_dt).days <= 90)
+            _finalize_attempt(current, _classify_incomplete(current, scen_list, _still_recent))
             if _qualifies(current, scen_list):
                 campaign_attempts.append(current)
 
