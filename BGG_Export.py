@@ -40,6 +40,23 @@ DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "exp
 _DIFFICULTY_ORDER = ["Standard", "Standard II", "Standard III", "Expert", "Expert II"]
 _DIFFICULTY_RANK  = {m.lower(): i for i, m in enumerate(_DIFFICULTY_ORDER)}
 
+def difficulty_from_comments(comments_lower):
+    """Erkennt den Schwierigkeitsgrad aus dem Kommentar-Text (lowercase).
+
+    Reihenfolge: längste Variante zuerst, um Überschneidungen zu vermeiden
+    (z.B. 'expert ii' vor 'expert').  Wenn kein Marker gefunden wird → 'Standard'.
+    """
+    for marker, label in [
+        ("expert ii",    "Expert II"),
+        ("expert",       "Expert"),
+        ("standard iii", "Standard III"),
+        ("standard ii",  "Standard II"),
+        ("standard",     "Standard"),
+    ]:
+        if marker in comments_lower:
+            return label
+    return "Standard"
+
 def sort_modular_combo(modular_name):
     """Sortierschlüssel: Schwierigkeitsgrade zuerst (in fester Reihenfolge), dann alphabetisch."""
     key = modular_name.lower()
@@ -579,12 +596,14 @@ if __name__ == "__main__":
         _res = classify_result(play)
 
         _comments = (play.get("comments") or "").lower()
+        _diff     = difficulty_from_comments(_comments)
         for _camp in _scen_to_campaigns[_matched]:
             _campaign_plays[(_combo, _camp)].append({
-                "date": _date,
-                "scenario": _matched,
-                "result": _res,
-                "comments": _comments,
+                "date":       _date,
+                "scenario":   _matched,
+                "result":     _res,
+                "comments":   _comments,
+                "difficulty": _diff,
             })
 
     # Spätestes Spieldatum im Gesamtdatensatz — für "in_progress" vs "abandoned"
@@ -615,7 +634,7 @@ if __name__ == "__main__":
         last_plays = [p for p in att["plays"] if p["scenario"] == last_scen]
         if (last_plays
                 and any(p["result"] == "loss" for p in last_plays)
-                and any("expert" in p.get("comments", "") for p in last_plays)):
+                and "expert" in att.get("difficulty", "").lower()):
             return "lost"
         return "abandoned"
 
@@ -637,7 +656,7 @@ if __name__ == "__main__":
 
     # Zwei Plays gehören zum selben Versuch, wenn sie < GAP_DAYS Tage auseinander liegen.
     # Größere Lücken → alter Versuch wird als abgebrochen markiert, neuer beginnt.
-    GAP_DAYS = 180
+    GAP_DAYS = 60
 
     # State Machine pro (combo, campaign): Plays chronologisch in Versuche aufteilen
     for (combo, camp_name), plays_list in _campaign_plays.items():
@@ -648,8 +667,9 @@ if __name__ == "__main__":
         plays_list.sort(key=lambda p: (p["date"], _scen_idx_map.get(p["scenario"], 999)))
         scen_list = CAMPAIGNS[camp_name]
 
-        current     = None
-        current_idx = 0  # Index des als Nächstes zu gewinnenden Szenarios
+        current      = None
+        current_idx  = 0     # Index des als Nächstes zu gewinnenden Szenarios
+        current_diff = None  # Schwierigkeitsgrad des laufenden Versuchs
 
         for play in plays_list:
             try:
@@ -657,8 +677,14 @@ if __name__ == "__main__":
             except ValueError:
                 continue
 
-            # Prüfen, ob ein laufender Versuch aufgrund einer Lücke / eines Neustarts
-            # beendet werden muss
+            play_diff = play["difficulty"]
+
+            # Prüfen, ob ein laufender Versuch beendet werden muss:
+            #  - Zeitlücke > GAP_DAYS
+            #  - Neustart ab Szenario 0 nach Fortschritt
+            #  - Szenario übersprungen (scen_idx > current_idx = fehlende Partie in der Reihenfolge)
+            # Schwierigkeitswechsel beendet den Versuch NICHT direkt — eine Partie mit
+            # falscher Schwierigkeit am richtigen Szenarienplatz wird stattdessen ignoriert.
             if current is not None:
                 try:
                     _prev_dt = _dt.strptime(current["plays"][-1]["date"], "%Y-%m-%d")
@@ -666,26 +692,36 @@ if __name__ == "__main__":
                     _gap     = (_play_dt - _prev_dt).days
                 except ValueError:
                     _gap = 0
-                if _gap > GAP_DAYS or (scen_idx == 0 and current_idx > 0):
+                if (_gap > GAP_DAYS
+                        or (scen_idx == 0 and current_idx > 0)
+                        or scen_idx > current_idx):
                     _finalize_attempt(current, _classify_incomplete(current, scen_list))
                     if _qualifies(current, scen_list):
                         campaign_attempts.append(current)
-                    current     = None
-                    current_idx = 0
+                    current      = None
+                    current_idx  = 0
+                    current_diff = None
 
             if current is None:
                 # Neuer Versuch nur starten, wenn das erste Szenario der Kampagne gespielt wird
                 if scen_idx != 0:
                     continue
-                current = {"campaign": camp_name, "heroes": list(combo), "plays": []}
-                current_idx = 0
+                current      = {"campaign": camp_name, "heroes": list(combo), "plays": [], "difficulty": play_diff}
+                current_idx  = 0
+                current_diff = play_diff
+            else:
+                # Laufender Versuch: Partien mit falscher Schwierigkeit oder bereits
+                # gewonnenen Szenarien (Wiederholungen) werden stillschweigend ignoriert.
+                if scen_idx < current_idx or play_diff != current_diff:
+                    continue
 
             current["plays"].append(play)
 
-            if play["result"] == "win":
-                current_idx = max(current_idx, scen_idx + 1)
-            else:
-                current_idx = max(current_idx, scen_idx)
+            # Fortschritt nur bei Sieg auf dem nächsten erwarteten Szenario.
+            # Siege auf späteren Szenarien (übersprungen) oder bereits gewonnenen
+            # Szenarien verändern den Fortschritt nicht.
+            if play["result"] == "win" and scen_idx == current_idx:
+                current_idx += 1
 
             if current_idx >= len(scen_list):
                 _finalize_attempt(current, "completed")
@@ -712,7 +748,7 @@ if __name__ == "__main__":
     with open(OUTFILE_CAMPAIGNS, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, delimiter=";")
         writer.writerow([
-            "campaign", "heroes", "start_date", "end_date", "status",
+            "campaign", "heroes", "difficulty", "start_date", "end_date", "status",
             "play_count", "scenarios_played",
         ])
         for att in campaign_attempts:
@@ -722,7 +758,8 @@ if __name__ == "__main__":
                 for p in att["plays"]
             )
             writer.writerow([
-                att["campaign"], heroes_str, att["start_date"], att["end_date"],
+                att["campaign"], heroes_str, att.get("difficulty", "Standard"),
+                att["start_date"], att["end_date"],
                 att["status"], len(att["plays"]), played_str,
             ])
 

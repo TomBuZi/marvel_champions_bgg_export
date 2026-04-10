@@ -92,7 +92,7 @@ def build():
     # nicht von Plotly zusammengelegt werden
     df["y_pos"] = range(len(df))
     tick_text = [
-        f"{row['campaign']} \u2014 {_short_heroes(row['heroes'])}"
+        f"{row['campaign']} \u2014 {_short_heroes(row['heroes'])} ({row.get('difficulty', 'Standard')})"
         for _, row in df.iterrows()
     ]
 
@@ -149,6 +149,7 @@ def build():
             hover = (
                 f"<b>{row['campaign']}</b><br>"
                 f"Helden: {row['heroes']}<br>"
+                f"Schwierigkeit: {row.get('difficulty', 'Standard')}<br>"
                 f"Status: {status_label}<br>"
                 f"Zeitraum: {date_range}<br>"
                 f"Partien: {row['play_count']}<br>"
@@ -191,6 +192,7 @@ def build():
                 f"<b>{p['scenario']}</b> ({row['campaign']})<br>"
                 f"{p['date']}<br>"
                 f"Helden: {row['heroes']}<br>"
+                f"Schwierigkeit: {row.get('difficulty', 'Standard')}<br>"
                 f"Ergebnis: {RESULT_LABELS[p['result']]}"
             )
 
@@ -275,6 +277,7 @@ def build_summary_html():
         total       = len(sub)
         completed   = int((sub["status"] == "completed").sum())
         in_progress = int((sub["status"] == "in_progress").sum())
+        lost        = int((sub["status"] == "lost").sum())
         abandoned   = int((sub["status"] == "abandoned").sum())
 
         attempt_rows = []
@@ -293,9 +296,11 @@ def build_summary_html():
                 f"{RESULT_ICONS[p['result']]}</span>"
                 for p in plays
             )
+            diff_val = row.get("difficulty", "Standard") if hasattr(row, "get") else getattr(row, "difficulty", "Standard")
             attempt_rows.append(
                 f"<tr>"
                 f"<td>{row['heroes']}</td>"
+                f"<td style='text-align:center'>{diff_val}</td>"
                 f"<td>{date_range}</td>"
                 f"<td style='text-align:center'>{row['play_count']}</td>"
                 f"<td style='text-align:center'>{played_inline}</td>"
@@ -303,17 +308,23 @@ def build_summary_html():
                 f"</tr>"
             )
 
+        # Stats-Zeile: nur anzeigen was > 0 ist
+        stats_parts = [f"<span style='color:{STATUS_COLORS['completed']}'>{completed} abgeschlossen</span>"]
+        if in_progress:
+            stats_parts.append(f"<span style='color:{STATUS_COLORS['in_progress']}'>{in_progress} laufend</span>")
+        if lost:
+            stats_parts.append(f"<span style='color:{STATUS_COLORS['lost']}'>{lost} verloren</span>")
+        if abandoned:
+            stats_parts.append(f"<span style='color:{STATUS_COLORS['abandoned']}'>{abandoned} abgebrochen</span>")
+
         rows_html.append(
             f"<h3 style='margin:16px 8px 6px 8px;color:#16213e'>{camp}</h3>"
             f"<div style='padding:0 8px 4px 8px;font-size:12px;color:#666'>"
-            f"{total} Versuch(e) &mdash; "
-            f"<span style='color:{STATUS_COLORS['completed']}'>{completed} abgeschlossen</span>, "
-            f"<span style='color:{STATUS_COLORS['in_progress']}'>{in_progress} laufend</span>, "
-            f"<span style='color:{STATUS_COLORS['abandoned']}'>{abandoned} abgebrochen</span>"
+            f"{total} Versuch(e) &mdash; " + ", ".join(stats_parts) +
             f"</div>"
             f"<table class='sticky-table' style='margin:4px 8px 12px 8px;font-size:12px'>"
             f"<thead><tr>"
-            f"<th>Helden</th><th>Zeitraum</th><th>Partien</th><th>Szenarien</th><th>Status</th>"
+            f"<th>Helden</th><th>Schwierigkeit</th><th>Zeitraum</th><th>Partien</th><th>Szenarien</th><th>Status</th>"
             f"</tr></thead>"
             f"<tbody>{''.join(attempt_rows)}</tbody>"
             f"</table>"
