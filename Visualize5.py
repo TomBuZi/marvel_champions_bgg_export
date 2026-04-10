@@ -217,13 +217,15 @@ def build():
         ))
 
     # --- Layout --- #
-    height = max(520, len(df) * 30 + 240)
+    height = max(520, len(df) * 38 + 240)
+    width  = 1800
 
     fig.update_layout(
         title=dict(
             text="Marvel Champions \u2014 Gespielte Kampagnen (Zeitstrahl)",
             font=dict(size=16),
         ),
+        width=width,
         barmode="overlay",
         bargap=0.35,
         xaxis=dict(

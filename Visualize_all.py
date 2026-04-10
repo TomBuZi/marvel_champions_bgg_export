@@ -44,7 +44,7 @@ div1m = fig1m.to_html(full_html=False, include_plotlyjs=False,  config=PLOTLY_CO
 div2  = fig2.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div3  = fig3.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div4  = fig4.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
-div5  = fig5.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
+div5  = fig5.to_html (full_html=False, include_plotlyjs=False,  config={'responsive': False, 'scrollZoom': True})
 
 # Viz4: Baumansicht-Höhe für mobile JS übergeben
 import pandas as pd
@@ -220,16 +220,18 @@ html = f"""<!DOCTYPE html>
     /* ── Viz3+Viz4+Viz5-Switch immer sichtbar (ersetzt Plotly-updatemenus) ── */
     #viz3-switch, #viz4-switch, #viz5-switch {{ display: flex; }}
 
+    /* ── Standard: HTML-Tabelle/Zusammenfassung gezeigt, Plotly-Chart versteckt ── */
+    .viz-plotly {{ display: none; }}
+    .viz-table  {{ display: block; }}
+
+    /* ── Kampagnen-Zeitstrahl: horizontales Scrollen ── */
+    #viz5-plotly {{ overflow-x: auto; }}
+
     /* ── Mobile: Responsive-Anpassungen ── */
     @media (max-width: 768px) {{
       .desktop-vis  {{ display: none !important; }}
       .mobile-vis   {{ display: block; }}
       .mobile-switch {{ display: flex; }}
-      .viz-plotly   {{ display: none; }}   /* initial: Kreuztabelle gezeigt */
-      .viz-table    {{ display: block; }}
-    }}
-    @media (min-width: 769px) {{
-      .viz-table {{ display: none; }}  /* Desktop-Standard: ausgeblendet (JS kann übersteuern) */
     }}
   </style>
 </head>
@@ -307,6 +309,67 @@ html = f"""<!DOCTYPE html>
     var TAB_LABELS    = {tab_labels_js};
     var VIZ4_IC_HEIGHT = {ic_height_js};
 
+    // ── Deep-Link-Hashes ──
+    var TAB_HASHES = ['Dashboard', 'Helden-Aspekte', 'Helden-Schurken', 'Szenarien-Modulars', 'Kampagnen'];
+    var VIZ_TAB    = {{'viz3': 2, 'viz4': 3, 'viz5': 4}};
+    var VIEW_HASHES = {{
+        'viz3': {{'table': 'Kreuztabelle', 'sunburst': 'Sunburst'}},
+        'viz4': {{'table': 'Kreuztabelle', 'sunburst': 'Sunburst', 'baumansicht': 'Baumansicht'}},
+        'viz5': {{'table': 'Zusammenfassung', 'timeline': 'Zeitstrahl'}}
+    }};
+    var VIEW_FROM_HASH = {{
+        'viz3': {{'Kreuztabelle': 'table', 'Sunburst': 'sunburst'}},
+        'viz4': {{'Kreuztabelle': 'table', 'Sunburst': 'sunburst', 'Baumansicht': 'baumansicht'}},
+        'viz5': {{'Zusammenfassung': 'table', 'Zeitstrahl': 'timeline'}}
+    }};
+
+    function setHash(hash) {{
+      try {{ history.replaceState(null, '', '#' + hash); }} catch(e) {{}}
+    }}
+
+    function getTabHash(n) {{
+      var base = TAB_HASHES[n];
+      for (var vid in VIZ_TAB) {{
+        if (VIZ_TAB[vid] === n) {{
+          var sw = document.getElementById(vid + '-switch');
+          if (sw) {{
+            var ab = sw.querySelector('button.active');
+            if (ab) {{
+              var vh = VIEW_HASHES[vid] && VIEW_HASHES[vid][ab.getAttribute('data-view')];
+              if (vh) return base + '-' + vh;
+            }}
+          }}
+        }}
+      }}
+      return base;
+    }}
+
+    function navigateToHash(hash) {{
+      for (var i = 0; i < TAB_HASHES.length; i++) {{
+        var tabHash = TAB_HASHES[i];
+        if (hash === tabHash || hash.indexOf(tabHash + '-') === 0) {{
+          showTab(i);
+          var viewPart = hash.slice(tabHash.length + 1);
+          if (viewPart) {{
+            for (var vid in VIZ_TAB) {{
+              if (VIZ_TAB[vid] === i) {{
+                var view = VIEW_FROM_HASH[vid] && VIEW_FROM_HASH[vid][viewPart];
+                if (view) {{
+                  var sw2 = document.getElementById(vid + '-switch');
+                  if (sw2) {{
+                    var btn = sw2.querySelector('[data-view="' + view + '"]');
+                    if (btn) mobileSwitchView(vid, view, btn);
+                  }}
+                }}
+              }}
+            }}
+          }}
+          return;
+        }}
+      }}
+      showTab(0);
+    }}
+
     function toggleMenu() {{
       document.getElementById('nav-menu').classList.toggle('open');
     }}
@@ -320,6 +383,7 @@ html = f"""<!DOCTYPE html>
       }});
       document.getElementById('active-label').textContent = TAB_LABELS[n];
       document.getElementById('nav-menu').classList.remove('open');
+      setHash(getTabHash(n));
       // Plotly resize nur für sichtbare Divs
       var panel = document.querySelectorAll('.tab-content')[n];
       panel.querySelectorAll('.plotly-graph-div').forEach(function(div) {{
@@ -374,6 +438,11 @@ html = f"""<!DOCTYPE html>
           if (restyle) Plotly.update(plotDiv, restyle, relayout);
           Plotly.Plots.resize(plotDiv);
         }}
+      }}
+      // Hash aktualisieren
+      if (VIZ_TAB[vizId] !== undefined) {{
+        var vh = VIEW_HASHES[vizId] && VIEW_HASHES[vizId][view];
+        setHash(TAB_HASHES[VIZ_TAB[vizId]] + (vh ? '-' + vh : ''));
       }}
     }}
 
@@ -452,24 +521,22 @@ html = f"""<!DOCTYPE html>
       }});
     }}
 
-    showTab(0);
-
-    // Initialen aktiven Button für viz3+viz4+viz5 je nach Screen setzen
-    (function() {{
-      var isMobile = window.matchMedia('(max-width: 768px)').matches;
-      var defaults = {{
-        viz3: isMobile ? 'table' : 'sunburst',
-        viz4: isMobile ? 'table' : 'sunburst',
-        viz5: isMobile ? 'table' : 'timeline'
-      }};
-      Object.keys(defaults).forEach(function(vizId) {{
-        var sw = document.getElementById(vizId + '-switch');
-        if (!sw) return;
-        sw.querySelectorAll('button').forEach(function(b) {{
-          b.classList.toggle('active', b.getAttribute('data-view') === defaults[vizId]);
-        }});
+    // Standard-Ansicht: Tabelle/Zusammenfassung für alle Switcher aktiv setzen
+    ['viz3', 'viz4', 'viz5'].forEach(function(vizId) {{
+      var sw = document.getElementById(vizId + '-switch');
+      if (!sw) return;
+      sw.querySelectorAll('button').forEach(function(b) {{
+        b.classList.toggle('active', b.getAttribute('data-view') === 'table');
       }});
-    }})();
+    }});
+
+    // Hash-basierte Navigation beim Laden
+    var _initHash = window.location.hash.slice(1);
+    if (_initHash) {{
+      navigateToHash(_initHash);
+    }} else {{
+      showTab(0);
+    }}
   </script>
 </body>
 </html>"""
