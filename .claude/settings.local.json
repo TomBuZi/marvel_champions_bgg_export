@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python _test_campaigns.py)",
+      "Bash(python -c \"import Visualize5; fig = Visualize5.build\\(\\); print\\('OK', len\\(fig.data\\), 'traces'\\); html = Visualize5.build_summary_html\\(\\); print\\('Summary HTML len:', len\\(html\\)\\)\")",
+      "Bash(python Visualize5.py)",
+      "Bash(python Visualize_all.py)",
+      "Bash(python -c ':*)",
+      "Bash(python BGG_Export.py)"
+    ]
+  }
+}

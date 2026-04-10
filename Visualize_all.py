@@ -8,12 +8,14 @@ import Visualize
 import Visualize2
 import Visualize3
 import Visualize4
+import Visualize5
 
 TAB_LABELS = [
     ("Dashboard",              "dashboard"),
     ("Helden \u00d7 Aspekte",     "hero_aspect"),
     ("Helden \u00d7 Schurken",    "hero_villain"),
     ("Szenarien \u00d7 Modulars", "scenario_modulars"),
+    ("Kampagnen",              "campaigns"),
 ]
 
 PLOTLY_CONFIG = {'responsive': True, 'scrollZoom': False}
@@ -28,9 +30,12 @@ print("Baue Helden \u00d7 Schurken ...")
 fig3 = Visualize3.build()
 print("Baue Szenarien \u00d7 Modulars ...")
 fig4 = Visualize4.build()
+print("Baue Kampagnen ...")
+fig5 = Visualize5.build()
 print("Baue HTML-Tabellen ...")
 table3_html = Visualize3.build_table_html()
 table4_html = Visualize4.build_table_html()
+table5_html = Visualize5.build_summary_html()
 print("Alle Visualisierungen gebaut.")
 
 # --- Plotly HTML-Fragmente rendern ---
@@ -39,6 +44,7 @@ div1m = fig1m.to_html(full_html=False, include_plotlyjs=False,  config=PLOTLY_CO
 div2  = fig2.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div3  = fig3.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div4  = fig4.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
+div5  = fig5.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 
 # Viz4: Baumansicht-Höhe für mobile JS übergeben
 import pandas as pd
@@ -211,8 +217,8 @@ html = f"""<!DOCTYPE html>
     .gh-btn-save   {{ background: #16213e; border: 1px solid #16213e; color: #fff; }}
     .gh-btn-save:hover {{ background: #e62429; border-color: #e62429; }}
 
-    /* ── Viz3+Viz4-Switch immer sichtbar (ersetzt Plotly-updatemenus) ── */
-    #viz3-switch, #viz4-switch {{ display: flex; }}
+    /* ── Viz3+Viz4+Viz5-Switch immer sichtbar (ersetzt Plotly-updatemenus) ── */
+    #viz3-switch, #viz4-switch, #viz5-switch {{ display: flex; }}
 
     /* ── Mobile: Responsive-Anpassungen ── */
     @media (max-width: 768px) {{
@@ -270,6 +276,16 @@ html = f"""<!DOCTYPE html>
     </div>
     <div class="viz-plotly" id="viz4-plotly">{div4}</div>
     <div class="viz-table"  id="viz4-table">{table4_html}</div>
+  </div>
+
+  <!-- Tab 4: Kampagnen (Plotly-Zeitstrahl + mobile HTML-Zusammenfassung) -->
+  <div class="tab-content" id="tab-campaigns">
+    <div class="mobile-switch" id="viz5-switch">
+      <button data-view="table"    onclick="mobileSwitchView('viz5','table',this)">Zusammenfassung</button>
+      <button data-view="timeline" onclick="mobileSwitchView('viz5','timeline',this)">Zeitstrahl</button>
+    </div>
+    <div class="viz-plotly" id="viz5-plotly">{div5}</div>
+    <div class="viz-table"  id="viz5-table">{table5_html}</div>
   </div>
 
   <!-- GitHub Token Modal -->
@@ -338,23 +354,24 @@ html = f"""<!DOCTYPE html>
         tableEl.style.display = 'none';
         var plotDiv = plotEl.querySelector('.plotly-graph-div');
         if (plotDiv && window.Plotly) {{
-          var restyle, relayout;
+          var restyle = null, relayout = null;
           if (vizId === 'viz3') {{
             // traces: [0]=heatmap, [1]=sunburst
             restyle  = {{visible: [false, true]}};
             relayout = {{'title.text': 'Helden \u2192 Szenarien \u2192 Helden',
                          height: 850, margin: {{l:10,r:10,t:100,b:10}}}};
-          }} else if (view === 'sunburst') {{
+          }} else if (vizId === 'viz4' && view === 'sunburst') {{
             // viz4 traces: [0]=sunburst, [1]=heatmap, [2]=icicle
             restyle  = {{visible: [true, false, false]}};
             relayout = {{'title.text': 'Szenarien \u00d7 Modularkombinationen',
                          height: 850, margin: {{l:10,r:10,t:60,b:10}}}};
-          }} else {{
+          }} else if (vizId === 'viz4') {{
             restyle  = {{visible: [false, false, true]}};
             relayout = {{'title.text': 'Szenarien \u2192 Modulars \u2192 Helden',
                          height: VIZ4_IC_HEIGHT, margin: {{l:10,r:10,t:60,b:10}}}};
           }}
-          Plotly.update(plotDiv, restyle, relayout);
+          // viz5: Timeline hat nur eine Ansicht, kein restyle nötig
+          if (restyle) Plotly.update(plotDiv, restyle, relayout);
           Plotly.Plots.resize(plotDiv);
         }}
       }}
@@ -437,14 +454,19 @@ html = f"""<!DOCTYPE html>
 
     showTab(0);
 
-    // Initialen aktiven Button für viz3+viz4 je nach Screen setzen
+    // Initialen aktiven Button für viz3+viz4+viz5 je nach Screen setzen
     (function() {{
       var isMobile = window.matchMedia('(max-width: 768px)').matches;
-      var defaultView = isMobile ? 'table' : 'sunburst';
-      ['viz3', 'viz4'].forEach(function(vizId) {{
+      var defaults = {{
+        viz3: isMobile ? 'table' : 'sunburst',
+        viz4: isMobile ? 'table' : 'sunburst',
+        viz5: isMobile ? 'table' : 'timeline'
+      }};
+      Object.keys(defaults).forEach(function(vizId) {{
         var sw = document.getElementById(vizId + '-switch');
+        if (!sw) return;
         sw.querySelectorAll('button').forEach(function(b) {{
-          b.classList.toggle('active', b.getAttribute('data-view') === defaultView);
+          b.classList.toggle('active', b.getAttribute('data-view') === defaults[vizId]);
         }});
       }});
     }})();

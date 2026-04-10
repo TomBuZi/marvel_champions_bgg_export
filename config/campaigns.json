@@ -1,0 +1,11 @@
+{
+    "The Rise of Red Skull":    ["Crossbones", "Absorbing Man", "Taskmaster", "Zola", "Red Skull"],
+    "The Galaxy's Most Wanted": ["Brotherhood of Badoon", "Infiltrate the Museum", "Escape the Museum", "Nebula", "Ronan the Accuser"],
+    "The Mad Titan's Shadow":   ["Ebony Maw", "Tower Defense", "Thanos", "Hela", "Loki"],
+    "Sinister Motives":         ["Sandman", "Venom", "Mysterio", "The Sinister Six", "Venom Goblin"],
+    "Mutant Genesis":           ["Sabretooth", "Project Wideawake", "Master Mold", "Mansion Attack", "Magneto"],
+    "Mojo Mania":               ["Magog", "Spiral", "Mojo"],
+    "NeXt Evolution":           ["Morlock Siege", "On the Run", "Juggernaut", "Mister Sinister", "Stryfe"],
+    "Age of Apocalypse":        ["Unus", "Four Horsemen", "Apocalypse", "Dark Beast", "En Sabah Nur"],
+    "Agents of S.H.I.E.L.D.":   ["Black Widow", "Batroc", "M.O.D.O.K.","Thunderbolts", "Baron Zemo"]
+}

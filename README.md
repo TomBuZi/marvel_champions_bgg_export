@@ -61,6 +61,7 @@ python Visualize.py        # Dashboard
 python Visualize2.py       # Hero × Aspect matrix
 python Visualize3.py       # Hero × Villain matrix / Sunburst
 python Visualize4.py       # Scenario × Modulars Sunburst / matrix
+python Visualize5.py       # Campaign timeline
 ```
 
 ---
@@ -103,6 +104,7 @@ Play comments are expected in the format:
 | `heroes_aspects.csv` | Play count per hero × aspect combination |
 | `heroes_scenarios.csv` | Play count per hero × scenario combination |
 | `marvel_champions_aspect_stats.csv` | Overall play count per aspect |
+| `marvel_champions_campaigns.csv` | Campaign attempts — campaign, heroes, date range, status, scenarios played |
 | `unrecognized_report.csv` | Plays with unrecognised heroes, aspects, scenarios, or modulars (with date and full comment) |
 
 ### Config files (`config/`)
@@ -116,6 +118,7 @@ Play comments are expected in the format:
 | `modulars.json` | All modular encounter set names |
 | `scenario_modulars.json` | Modulars that are always included automatically for specific scenarios |
 | `scenario_default_modulars.json` | Modulars used when no explicit modular was noted for a scenario |
+| `campaigns.json` | Campaign definitions — maps each campaign name to its ordered list of scenarios |
 
 ---
 
@@ -174,8 +177,30 @@ Output: `scenario_modular_sunburst.html`
 
 ---
 
+## Visualize5.py — Campaign Timeline
+
+Gantt-style timeline of all detected campaign attempts.
+
+**Detection logic** (in `BGG_Export.py`):
+- Campaigns are defined in `config/campaigns.json` as ordered scenario lists
+- Plays matching campaign scenarios are grouped by hero combination and campaign
+- A new attempt starts whenever the first scenario of a campaign is played; mid-campaign plays without a preceding first-scenario play are ignored (noise filter)
+- Attempts are split if consecutive plays are more than 180 days apart, or if scenario 0 is replayed after progress was made
+- **Status** is assigned as:
+  - `completed` — all scenarios won in order
+  - `in_progress` — last play within 90 days of the most recent play in the dataset
+  - `abandoned` — otherwise
+
+**Timeline view** — horizontal bars (one per attempt), coloured by status. Scatter markers show individual scenario plays: ✓ win, ✗ loss, ○ incomplete.
+
+**Zusammenfassung (summary) view** — mobile-friendly HTML table grouped by campaign, with per-attempt rows showing heroes, date range, play count, inline scenario icons, and status.
+
+Output: `campaigns_timeline.html`
+
+---
+
 ## Visualize_all.py — Combined Page
 
-Builds all four visualizations and assembles them into a single HTML file with a sticky tab bar. Plotly JS is loaded once from CDN.
+Builds all five visualizations and assembles them into a single HTML file with a sticky tab bar. Plotly JS is loaded once from CDN. Tabs: Dashboard, Helden × Aspekte, Helden × Schurken, Szenarien × Modulars, Kampagnen.
 
-Output: `marvel_champions_all.html`
+Output: `docs/index.html`

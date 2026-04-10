@@ -31,6 +31,7 @@ HERO_ALIASES          = load_config("hero_aliases.json")
 HERO_DEFAULT_ASPECTS  = load_config("hero_default_aspects.json")
 SCENARIO_MODULARS         = load_config("scenario_modulars.json")
 SCENARIO_DEFAULT_MODULARS = load_config("scenario_default_modulars.json")
+CAMPAIGNS                 = load_config("campaigns.json")
 
 # Nur Schwierigkeitsgrad-Modulars — gelten nicht als echte Modularauswahl
 DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "expert ii"}
@@ -542,6 +543,176 @@ if __name__ == "__main__":
         writer.writerows(sorted_aspect_stats)
 
     print(f"Aspekt-Statistik gespeichert als: {OUTFILE_ASPECTS}")
+
+    # --- KAMPAGNEN-ERKENNUNG --- #
+    # Gespielte Kampagnen (Versuche) aus der chronologischen Spielhistorie ableiten
+    # und pro (Heldenkombination, Kampagne) in Versuche aufteilen.
+
+    from collections import defaultdict as _defaultdict
+    from datetime import datetime as _dt
+
+    # Szenario → Liste der Kampagnen, zu denen es gehört
+    _scen_to_campaigns = {}
+    for _camp, _scen_list in CAMPAIGNS.items():
+        for _s in _scen_list:
+            _scen_to_campaigns.setdefault(_s, []).append(_camp)
+
+    # (combo, campaign) → Liste von Play-Dicts
+    _campaign_plays = _defaultdict(list)
+
+    for play in all_plays:
+        _matched = find_longest_prefix_match(play["scenario"].strip(), SCENARIOS)
+        if not _matched or _matched not in _scen_to_campaigns:
+            continue
+
+        _text_lower = (play.get("hero") or "").strip().lower()
+        _positions  = find_all_hero_positions(_text_lower, HEROES)
+        _positions  = remove_covered_matches(_positions)
+        _combo      = tuple(sorted({HERO_ALIASES.get(h, h) for _, h in _positions}))
+        if not _combo:
+            continue
+
+        _date = play.get("date") or ""
+        if not _date:
+            continue
+
+        _res = classify_result(play)
+
+        _comments = (play.get("comments") or "").lower()
+        for _camp in _scen_to_campaigns[_matched]:
+            _campaign_plays[(_combo, _camp)].append({
+                "date": _date,
+                "scenario": _matched,
+                "result": _res,
+                "comments": _comments,
+            })
+
+    # Spätestes Spieldatum im Gesamtdatensatz — für "in_progress" vs "abandoned"
+    _all_dates = [p.get("date") for p in all_plays if p.get("date")]
+    _max_date_str = max(_all_dates) if _all_dates else ""
+    try:
+        _max_dt = _dt.strptime(_max_date_str, "%Y-%m-%d")
+    except ValueError:
+        _max_dt = None
+
+    def _finalize_attempt(att, status):
+        att["status"]     = status
+        att["start_date"] = att["plays"][0]["date"]
+        att["end_date"]   = att["plays"][-1]["date"]
+
+    campaign_attempts = []
+
+    def _qualifies(att, scen_list):
+        """Gibt True zurück, wenn der Versuch als Kampagne zählt.
+
+        Bedingung: mindestens die Hälfte der Szenarien wurde gespielt (egal ob
+        Sieg oder Niederlage) ODER mindestens ein Play-Kommentar enthält
+        'campaign' bzw. 'kampagne'.  Andernfalls gilt es als Einzel-Szenario
+        ohne Kampagnenbezug und wird aus der Visualisierung ausgeschlossen.
+        """
+        unique_played = len(set(p["scenario"] for p in att["plays"]))
+        if unique_played >= len(scen_list) / 2:
+            return True
+        return any(
+            "campaign" in p.get("comments", "") or "kampagne" in p.get("comments", "")
+            for p in att["plays"]
+        )
+
+    # Zwei Plays gehören zum selben Versuch, wenn sie < GAP_DAYS Tage auseinander liegen.
+    # Größere Lücken → alter Versuch wird als abgebrochen markiert, neuer beginnt.
+    GAP_DAYS = 180
+
+    # State Machine pro (combo, campaign): Plays chronologisch in Versuche aufteilen
+    for (combo, camp_name), plays_list in _campaign_plays.items():
+        # Sekundärer Sortierschlüssel: Szenario-Index in der Kampagne.
+        # BGG liefert bei mehreren Plays am gleichen Tag keine garantierte Reihenfolge;
+        # für Kampagnen-Versuche ist die natürliche Szenarioreihenfolge zuverlässiger.
+        _scen_idx_map = {s: i for i, s in enumerate(CAMPAIGNS[camp_name])}
+        plays_list.sort(key=lambda p: (p["date"], _scen_idx_map.get(p["scenario"], 999)))
+        scen_list = CAMPAIGNS[camp_name]
+
+        current     = None
+        current_idx = 0  # Index des als Nächstes zu gewinnenden Szenarios
+
+        for play in plays_list:
+            try:
+                scen_idx = scen_list.index(play["scenario"])
+            except ValueError:
+                continue
+
+            # Prüfen, ob ein laufender Versuch aufgrund einer Lücke / eines Neustarts
+            # beendet werden muss
+            if current is not None:
+                try:
+                    _prev_dt = _dt.strptime(current["plays"][-1]["date"], "%Y-%m-%d")
+                    _play_dt = _dt.strptime(play["date"],                  "%Y-%m-%d")
+                    _gap     = (_play_dt - _prev_dt).days
+                except ValueError:
+                    _gap = 0
+                if _gap > GAP_DAYS or (scen_idx == 0 and current_idx > 0):
+                    _finalize_attempt(current, "abandoned")
+                    if _qualifies(current, scen_list):
+                        campaign_attempts.append(current)
+                    current     = None
+                    current_idx = 0
+
+            if current is None:
+                # Neuer Versuch nur starten, wenn das erste Szenario der Kampagne gespielt wird
+                if scen_idx != 0:
+                    continue
+                current = {"campaign": camp_name, "heroes": list(combo), "plays": []}
+                current_idx = 0
+
+            current["plays"].append(play)
+
+            if play["result"] == "win":
+                current_idx = max(current_idx, scen_idx + 1)
+            else:
+                current_idx = max(current_idx, scen_idx)
+
+            if current_idx >= len(scen_list):
+                _finalize_attempt(current, "completed")
+                if _qualifies(current, scen_list):
+                    campaign_attempts.append(current)
+                current     = None
+                current_idx = 0
+
+        if current is not None:
+            try:
+                _last_dt = _dt.strptime(current["plays"][-1]["date"], "%Y-%m-%d")
+            except ValueError:
+                _last_dt = None
+            _still_recent = _max_dt and _last_dt and (_max_dt - _last_dt).days <= 90
+            if _still_recent:
+                _finalize_attempt(current, "in_progress")
+            else:
+                _finalize_attempt(current, "abandoned")
+            if _qualifies(current, scen_list):
+                campaign_attempts.append(current)
+
+    # Sortierung: Kampagnen in Konfig-Reihenfolge, dann Startdatum aufsteigend
+    _camp_order = {c: i for i, c in enumerate(CAMPAIGNS)}
+    campaign_attempts.sort(key=lambda a: (_camp_order.get(a["campaign"], 9999), a["start_date"]))
+
+    OUTFILE_CAMPAIGNS = "marvel_champions_campaigns.csv"
+    with open(OUTFILE_CAMPAIGNS, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=";")
+        writer.writerow([
+            "campaign", "heroes", "start_date", "end_date", "status",
+            "play_count", "scenarios_played",
+        ])
+        for att in campaign_attempts:
+            heroes_str = " & ".join(att["heroes"])
+            played_str = " | ".join(
+                f'{p["date"]}::{p["scenario"]}::{p["result"]}'
+                for p in att["plays"]
+            )
+            writer.writerow([
+                att["campaign"], heroes_str, att["start_date"], att["end_date"],
+                att["status"], len(att["plays"]), played_str,
+            ])
+
+    print(f"Kampagnen-Statistik gespeichert als: {OUTFILE_CAMPAIGNS} ({len(campaign_attempts)} Versuche)")
 
     print(f"FERTIG! Datei gespeichert als: {OUTFILE}")
 
