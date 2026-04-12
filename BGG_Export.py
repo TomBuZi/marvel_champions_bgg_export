@@ -13,8 +13,9 @@ try:
 except ImportError:
     pass
 
-USERNAME = os.environ.get("BGG_USERNAME", "Almecho")
-GAME_ID = 285774                 # Marvel Champions
+USERNAME  = os.environ.get("BGG_USERNAME", "Almecho")
+MY_USERID = "250203"             # Eigene BGG-User-ID — wird bei Mehrspielerparten genutzt
+GAME_ID   = 285774               # Marvel Champions
 OUTFILE = "marvel_champions_plays.csv"
 
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
@@ -165,6 +166,21 @@ def extract_play_data(play):
 
     hero, scenario, result = split_comment(comments)
 
+    # Bei Mehrspielerparten: nur den Helden von MY_USERID berücksichtigen.
+    # BGG listet jeden Mitspieler als <player>-Element; der gespielte Held
+    # steht im Attribut "color".  Bei Einzelpartien bleibt der aus dem
+    # Kommentar geparste Held unverändert.
+    players_el = play.find("players")
+    if players_el is not None:
+        all_players = players_el.findall("player")
+        if len(all_players) > 1:
+            for p in all_players:
+                if p.attrib.get("userid") == MY_USERID:
+                    color = (p.attrib.get("color") or "").strip()
+                    if color:
+                        hero = color
+                    break
+
     # Basisdaten
     data = {
         "id": play.attrib.get("id"),
@@ -208,9 +224,11 @@ if __name__ == "__main__":
     plays_no_hero     = []  # (date, "", comment) — Heldenfeld komplett leer
     plays_no_villain  = []  # (date, "", comment) — Szenariofeld komplett leer
     unknown_heroes    = []  # (date, raw_text, comment) — Heldentext vorhanden, aber nicht erkannt
+    unknown_aspects   = []  # (date, raw_text, comment) — Text im Aspekt-Bereich, der kein bekannter Aspekt ist
     unknown_scenarios = []  # (date, raw_text, comment) — Szenariotext vorhanden, aber nicht erkannt
     unknown_modulars  = []  # (date, raw_text, comment)
     missing_modulars  = []  # (date, scenario, comment) — bekanntes Szenario, kein Modular im Kommentar
+    player_mismatches = []  # (date, info, comment) — Abweichung zwischen Player-color und Kommentar
 
     while True:
         print(f"Lade Seite {page} ...")
@@ -225,7 +243,59 @@ if __name__ == "__main__":
             break
 
         for p in plays:
-            all_plays.append(extract_play_data(p))
+            play_data = extract_play_data(p)
+            all_plays.append(play_data)
+
+            # Player-Konsistenzcheck: läuft für alle Partien mit <players>-Block,
+            # unabhängig von der Spieleranzahl.
+            # (Die Datenextraktion — color statt Kommentar — findet nur bei
+            # Mehrspielerparten statt, siehe extract_play_data.)
+            _players_el = p.find("players")
+            if _players_el is None:
+                continue
+            _all_players = _players_el.findall("player")
+
+            _date    = play_data.get("date", "?")
+            _comment = play_data.get("comments", "")
+            _my_p    = next(
+                (pl for pl in _all_players if pl.attrib.get("userid") == MY_USERID),
+                None
+            )
+
+            if _my_p is None:
+                _others = ", ".join(
+                    pl.attrib.get("name") or pl.attrib.get("username") or "?"
+                    for pl in _all_players
+                )
+                player_mismatches.append((_date, f"Eigener Player fehlt — Player: {_others}", _comment))
+                continue
+
+            _color_raw = _my_p.attrib.get("color")   # None = Attribut fehlt, "" = leer
+            if _color_raw is None:
+                player_mismatches.append((_date, "color-Attribut fehlt (kein Held eingetragen)", _comment))
+                continue
+            _color = _color_raw.strip()
+            if not _color:
+                player_mismatches.append((_date, "color leer (kein Held eingetragen)", _comment))
+                continue
+
+            # Helden aus color und aus Kommentar per Hero-Matching vergleichen
+            _color_pos   = remove_covered_matches(find_all_hero_positions(_color.lower(),   HEROES))
+            _comment_pos = remove_covered_matches(find_all_hero_positions(_comment.lower(), HEROES))
+            _color_heroes   = [h for _, h in _color_pos]
+            _comment_heroes = {h for _, h in _comment_pos}
+
+            if not _color_heroes:
+                player_mismatches.append((_date, f"Held in color nicht erkannt: \"{_color}\"", _comment))
+                continue
+
+            _missing = [h for h in _color_heroes if h not in _comment_heroes]
+            if _missing:
+                if len(_missing) == len(_color_heroes):
+                    _info = f"Held(en) aus color nicht im Kommentar: \"{_color}\""
+                else:
+                    _info = f"Teilweise nicht im Kommentar: {', '.join(_missing)} (color: \"{_color}\")"
+                player_mismatches.append((_date, _info, _comment))
 
         if len(all_plays) >= total_plays:
             break
@@ -459,6 +529,18 @@ if __name__ == "__main__":
                 key = (canonical, asp)
                 hero_aspect_counts[key] = hero_aspect_counts.get(key, 0) + 1
 
+            # Nicht-erkannte Aspekte: Text im Aspekt-Bereich, der kein bekannter Aspekt ist
+            hero_end_pos = hero_pos + len(hero)
+            region_end   = int(next_hero_pos) if next_hero_pos != float('inf') else len(text_lower)
+            if hero_end_pos < region_end:
+                leftover = text_lower[hero_end_pos:region_end]
+                for pos, asp in aspect_positions:
+                    if hero_pos < pos < next_hero_pos:
+                        leftover = leftover.replace(asp.lower(), '', 1)
+                leftover = re.sub(r'[\s,&+\-–|/]+', ' ', leftover).strip()
+                if leftover:
+                    unknown_aspects.append((play["date"], leftover, play["comments"]))
+
     # CSV: Gesamtzahl pro Held
     with open("heroes_total.csv", "w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, delimiter=";")
@@ -626,16 +708,17 @@ if __name__ == "__main__":
 
         'lost': Expert/Expert-II-Partie, die am letzten Szenario der Kampagne
         scheiterte — die Kampagne gilt als gespielt und verloren, nicht als
-        abgebrochen.  Gilt nur wenn der Versuch nicht mehr laufend ist.
+        abgebrochen.  Diese Prüfung hat Vorrang vor 'still_recent', da eine
+        Niederlage am letzten Szenario die Kampagne definitiv beendet.
         """
-        if still_recent:
-            return "in_progress"
         last_scen = scen_list[-1]
         last_plays = [p for p in att["plays"] if p["scenario"] == last_scen]
         if (last_plays
                 and any(p["result"] == "loss" for p in last_plays)
                 and "expert" in att.get("difficulty", "").lower()):
             return "lost"
+        if still_recent:
+            return "in_progress"
         return "abandoned"
 
     def _qualifies(att, scen_list):
@@ -790,9 +873,11 @@ if __name__ == "__main__":
     _print_unknowns("Plays ohne Held",          plays_no_hero)
     _print_unknowns("Plays ohne Villain",        plays_no_villain)
     _print_unknowns("Helden nicht erkannt",      unknown_heroes)
+    _print_unknowns("Aspekte nicht erkannt",     unknown_aspects)
     _print_unknowns("Szenarien nicht erkannt",   unknown_scenarios)
     _print_unknowns("Modulars nicht erkannt",    unknown_modulars)
     _print_unknowns("Fehlende Modulars",         missing_modulars)
+    _print_unknowns("Player-Abweichungen",       player_mismatches)
 
     OUTFILE_UNKNOWN = "unrecognized_report.csv"
     with open(OUTFILE_UNKNOWN, "w", newline="", encoding="utf-8") as f:
@@ -804,13 +889,17 @@ if __name__ == "__main__":
             writer.writerow(["Kein Villain", date, value, comment])
         for date, value, comment in sorted(unknown_heroes):
             writer.writerow(["Held nicht erkannt", date, value, comment])
+        for date, value, comment in sorted(unknown_aspects):
+            writer.writerow(["Aspekt nicht erkannt", date, value, comment])
         for date, value, comment in sorted(unknown_scenarios):
             writer.writerow(["Szenario nicht erkannt", date, value, comment])
         for date, value, comment in sorted(unknown_modulars):
             writer.writerow(["Modular nicht erkannt", date, value, comment])
         for date, value, comment in sorted(missing_modulars):
             writer.writerow(["Fehlendes Modular", date, value, comment])
+        for date, value, comment in sorted(player_mismatches):
+            writer.writerow(["Player-Abweichung", date, value, comment])
 
-    if any([plays_no_hero, plays_no_villain, unknown_heroes,
-            unknown_scenarios, unknown_modulars, missing_modulars]):
+    if any([plays_no_hero, plays_no_villain, unknown_heroes, unknown_aspects,
+            unknown_scenarios, unknown_modulars, missing_modulars, player_mismatches]):
         print(f"\nBericht gespeichert als: {OUTFILE_UNKNOWN}")

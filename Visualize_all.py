@@ -29,8 +29,6 @@ print("Baue Dashboard (Desktop) ...")
 fig1d = Visualize.build(mobile=False)
 print("Baue Dashboard (Mobile) ...")
 fig1m = Visualize.build(mobile=True)
-print("Baue Helden \u00d7 Aspekte ...")
-fig2 = Visualize2.build()
 print("Baue Helden \u00d7 Schurken ...")
 fig3 = Visualize3.build()
 print("Baue Szenarien \u00d7 Modulars ...")
@@ -38,6 +36,7 @@ fig4 = Visualize4.build()
 print("Baue Kampagnen ...")
 fig5 = Visualize5.build()
 print("Baue HTML-Tabellen ...")
+table2_html = Visualize2.build_table_html()
 table3_html = Visualize3.build_table_html()
 table4_html = Visualize4.build_table_html()
 table5_html = Visualize5.build_summary_html()
@@ -47,7 +46,6 @@ print("Alle Visualisierungen gebaut.")
 # --- Plotly HTML-Fragmente rendern ---
 div1d = fig1d.to_html(full_html=False, include_plotlyjs='cdn', config=PLOTLY_CONFIG)
 div1m = fig1m.to_html(full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
-div2  = fig2.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div3  = fig3.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div4  = fig4.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div5  = fig5.to_html (full_html=False, include_plotlyjs=False,  config={'responsive': False, 'scrollZoom': True})
@@ -270,7 +268,7 @@ html = f"""<!DOCTYPE html>
 
   <!-- Tab 1: Helden × Aspekte -->
   <div class="tab-content" id="tab-hero_aspect">
-    {div2}
+    {table2_html}
   </div>
 
   <!-- Tab 2: Helden × Schurken (Plotly + mobile HTML-Tabelle) -->

@@ -7,7 +7,9 @@
       "Bash(python Visualize_all.py)",
       "Bash(python -c ':*)",
       "Bash(python BGG_Export.py)",
-      "Bash(wc:*)"
+      "Bash(wc:*)",
+      "Bash(python -c \"import BGG_Export\")",
+      "Bash(python:*)"
     ]
   }
 }

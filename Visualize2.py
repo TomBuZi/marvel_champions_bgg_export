@@ -1,3 +1,4 @@
+import json
 import os
 import webbrowser
 import numpy as np
@@ -159,6 +160,170 @@ def build():
     )
 
     return fig
+
+
+def build_table_html():
+    """Sortierbare HTML-Kreuztabelle: Helden (Zeilen) × Aspekte (Spalten)."""
+    df        = pd.read_csv('heroes_aspects.csv', sep=';')
+    df_totals = pd.read_csv('heroes_total.csv',   sep=';').set_index('Hero')
+
+    pivot_full = df.pivot_table(
+        index='Hero', columns='Aspect', values='Count', aggfunc='sum', fill_value=0
+    )
+
+    aspect_order = ['Aggression', 'Justice', 'Leadership', 'Protection', 'Basic', "'Pool", 'Precon']
+    aspects = [a for a in aspect_order if a in pivot_full.columns]
+    pivot   = pivot_full.reindex(columns=aspects, fill_value=0)
+
+    if '' in pivot_full.columns:
+        pivot['Undefined'] = pivot_full['']
+    else:
+        pivot['Undefined'] = 0
+
+    pivot = pivot[pivot.sum(axis=1) > 0]
+    pivot['Total'] = pivot.index.map(
+        lambda h: int(df_totals.loc[h, 'Count']) if h in df_totals.index else 0
+    )
+
+    has_undefined = pivot['Undefined'].sum() > 0
+    extra_cols    = (['Undefined'] if has_undefined else []) + ['Total']
+    all_cols      = aspects + extra_cols
+
+    col_maxes = {col: int(pivot[col].max()) for col in all_cols if pivot[col].max() > 0}
+
+    rows = []
+    for hero, row in pivot.iterrows():
+        entry = {'hero': str(hero)}
+        for col in all_cols:
+            entry[col] = int(row[col])
+        rows.append(entry)
+
+    data_json     = json.dumps(rows,     ensure_ascii=False).replace('</script>', r'<\/script>')
+    cols_json     = json.dumps(all_cols, ensure_ascii=False)
+    colors_json   = json.dumps(ASPECT_COLORS, ensure_ascii=False)
+    col_maxes_json = json.dumps(col_maxes, ensure_ascii=False)
+    total = len(rows)
+
+    # Spaltennamen als HTML-sichere data-sort-Attribute (für Event-Delegation)
+    # Wichtig: onclick-Attribute in dynamisch gebautem innerHTML vermeiden,
+    # da Spaltennamen wie "'Pool" die JS-String-Begrenzer brechen würden.
+    parts = []
+    parts.append(f"""
+<div style="padding:8px">
+  <div style="margin-bottom:6px;font-size:12px;color:#666">
+    {total} Helden &mdash; sortierbar per Klick auf Spalten&uuml;berschrift
+  </div>
+  <div class="sticky-table-wrap" style="max-height:calc(100vh - 130px)">
+    <table class="sticky-table" id="aspect-table">
+      <thead id="aspect-thead"></thead>
+      <tbody id="aspect-tbody"></tbody>
+    </table>
+  </div>
+</div>
+<script>
+(function() {{
+  var ROWS      = {data_json};
+  var COLS      = {cols_json};
+  var COLORS    = {colors_json};
+  var COL_MAXES = {col_maxes_json};
+  var _sortCol  = "Total";
+  var _sortAsc  = false;
+
+  function sortAspect(col) {{
+    if (_sortCol === col) {{
+      _sortAsc = !_sortAsc;
+    }} else {{
+      _sortCol = col;
+      _sortAsc = (col === "hero");
+    }}
+    renderTable();
+  }}
+
+  function hexToRgb(hex) {{
+    hex = (hex || "888888").replace("#", "");
+    return [parseInt(hex.substr(0,2),16), parseInt(hex.substr(2,2),16), parseInt(hex.substr(4,2),16)];
+  }}
+
+  function cellBg(col, val) {{
+    if (!val || col === "Total" || col === "Undefined") return "";
+    var color = COLORS[col];
+    if (!color) return "";
+    var max = COL_MAXES[col] || 1;
+    var t = 0.65 * (val / max);
+    var rgb = hexToRgb(color);
+    var r = Math.round(rgb[0] * t + 255 * (1 - t));
+    var g = Math.round(rgb[1] * t + 255 * (1 - t));
+    var b = Math.round(rgb[2] * t + 255 * (1 - t));
+    return "background:rgb(" + r + "," + g + "," + b + ")";
+  }}
+
+  function escHtml(s) {{
+    return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }}
+
+  function ind(col) {{
+    if (col !== _sortCol) return "";
+    return _sortAsc ? " &#9650;" : " &#9660;";
+  }}
+
+  function renderTable() {{
+    var thead = document.getElementById("aspect-thead");
+    if (!thead) return;
+
+    // Header: data-sort-Attribut trägt den Spaltennamen; click via Event-Delegation
+    var hrow = "<tr>";
+    hrow += "<th class=\\"tbl-corner tbl-col\\" data-sort=\\"hero\\">Held" + ind("hero") + "</th>";
+    COLS.forEach(function(col) {{
+      var border = (col === "Total") ? "border-left:2px solid #555;" : "";
+      var active = (col === _sortCol) ? " tbl-sort-active" : "";
+      hrow += "<th class=\\"tbl-col" + active + "\\" style=\\"" + border
+            + "\\" data-sort=\\"" + escHtml(col) + "\\">"
+            + escHtml(col) + ind(col) + "</th>";
+    }});
+    hrow += "</tr>";
+    thead.innerHTML = hrow;
+
+    // Event-Delegation: nach jedem innerHTML-Update neu anhängen
+    thead.querySelectorAll("th[data-sort]").forEach(function(th) {{
+      th.addEventListener("click", function() {{
+        sortAspect(this.getAttribute("data-sort"));
+      }});
+    }});
+
+    // Body
+    var sorted = ROWS.slice().sort(function(a, b) {{
+      var va = (_sortCol === "hero") ? (a.hero || "").toLowerCase() : (a[_sortCol] || 0);
+      var vb = (_sortCol === "hero") ? (b.hero || "").toLowerCase() : (b[_sortCol] || 0);
+      if (va < vb) return _sortAsc ? -1 : 1;
+      if (va > vb) return _sortAsc ? 1 : -1;
+      return 0;
+    }});
+
+    var tbody = document.getElementById("aspect-tbody");
+    var html = "";
+    sorted.forEach(function(row) {{
+      html += "<tr><td class=\\"tbl-row\\">" + escHtml(row.hero) + "</td>";
+      COLS.forEach(function(col) {{
+        var val    = row[col] || 0;
+        var bg     = cellBg(col, val);
+        var border = (col === "Total") ? "border-left:2px solid #ccc;" : "";
+        var style  = (bg || border) ? " style=\\"" + bg + (bg && border ? ";" : "") + border + "\\"" : "";
+        html += "<td" + style + ">" + (val > 0 ? val : "") + "</td>";
+      }});
+      html += "</tr>";
+    }});
+    tbody.innerHTML = html;
+  }}
+
+  if (document.readyState === "loading") {{
+    document.addEventListener("DOMContentLoaded", renderTable);
+  }} else {{
+    renderTable();
+  }}
+}})();
+</script>
+""")
+    return "".join(parts)
 
 
 if __name__ == '__main__':
