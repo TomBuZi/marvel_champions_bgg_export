@@ -767,6 +767,15 @@ if __name__ == "__main__":
 
     print(f"FERTIG! Datei gespeichert als: {OUTFILE}")
 
+    # --- BGG-STATE für Change-Detection --- #
+    _state = {
+        "total":        total_plays,
+        "last_play_id": str(all_plays[0]["id"]) if all_plays else "0",
+    }
+    with open("bgg_state.json", "w", encoding="utf-8") as _f:
+        json.dump(_state, _f)
+    print("BGG-State gespeichert als: bgg_state.json")
+
     # --- UNBEKANNTE EINTRÄGE --- #
 
     def _print_unknowns(label, entries):

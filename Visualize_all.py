@@ -1,6 +1,7 @@
 import os
 import sys
 import webbrowser
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -9,6 +10,9 @@ import Visualize2
 import Visualize3
 import Visualize4
 import Visualize5
+import Visualize6
+
+BUILD_TIMESTAMP = datetime.now().strftime("%d.%m.%Y %H:%M")
 
 TAB_LABELS = [
     ("Dashboard",              "dashboard"),
@@ -16,6 +20,7 @@ TAB_LABELS = [
     ("Helden \u00d7 Schurken",    "hero_villain"),
     ("Szenarien \u00d7 Modulars", "scenario_modulars"),
     ("Kampagnen",              "campaigns"),
+    ("Alle Partien",           "all_plays"),
 ]
 
 PLOTLY_CONFIG = {'responsive': True, 'scrollZoom': False}
@@ -36,6 +41,7 @@ print("Baue HTML-Tabellen ...")
 table3_html = Visualize3.build_table_html()
 table4_html = Visualize4.build_table_html()
 table5_html = Visualize5.build_summary_html()
+table6_html = Visualize6.build_table_html()
 print("Alle Visualisierungen gebaut.")
 
 # --- Plotly HTML-Fragmente rendern ---
@@ -182,6 +188,14 @@ html = f"""<!DOCTYPE html>
     .tbl-sort-active {{ background: #9b1d20 !important; }}
     .tbl-sort-active:hover {{ background: #b52428 !important; }}
 
+    /* ── Build-Timestamp ── */
+    .build-info {{
+      color: #666;
+      font-size: 10px;
+      font-weight: normal;
+      white-space: nowrap;
+    }}
+
     /* ── GitHub Update-Button ── */
     .update-btn {{
       background: transparent; border: 1px solid #555; border-radius: 4px;
@@ -238,7 +252,7 @@ html = f"""<!DOCTYPE html>
 <body>
   <div class="header">
     <div class="tab-bar">
-      <span class="title">Marvel Champions</span>
+      <span class="title">Marvel Champions<br><span class="build-info">Stand: {BUILD_TIMESTAMP}</span></span>
       <span class="active-label" id="active-label"></span>
       <button class="update-btn" id="update-btn" onclick="ghUpdate()" title="Daten &amp; Visualisierung aktualisieren">&#x27F3;</button>
       <button class="burger-btn" id="burger-btn" onclick="toggleMenu()" aria-label="Navigation">&#9776;</button>
@@ -290,6 +304,11 @@ html = f"""<!DOCTYPE html>
     <div class="viz-table"  id="viz5-table">{table5_html}</div>
   </div>
 
+  <!-- Tab 5: Alle Partien -->
+  <div class="tab-content" id="tab-all_plays">
+    {table6_html}
+  </div>
+
   <!-- GitHub Token Modal -->
   <div class="gh-modal" id="gh-modal">
     <div class="gh-modal-box">
@@ -310,7 +329,7 @@ html = f"""<!DOCTYPE html>
     var VIZ4_IC_HEIGHT = {ic_height_js};
 
     // ── Deep-Link-Hashes ──
-    var TAB_HASHES = ['Dashboard', 'Helden-Aspekte', 'Helden-Schurken', 'Szenarien-Modulars', 'Kampagnen'];
+    var TAB_HASHES = ['Dashboard', 'Helden-Aspekte', 'Helden-Schurken', 'Szenarien-Modulars', 'Kampagnen', 'Alle-Partien'];
     var VIZ_TAB    = {{'viz3': 2, 'viz4': 3, 'viz5': 4}};
     var VIEW_HASHES = {{
         'viz3': {{'table': 'Kreuztabelle', 'sunburst': 'Sunburst'}},

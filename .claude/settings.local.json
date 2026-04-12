@@ -6,7 +6,8 @@
       "Bash(python Visualize5.py)",
       "Bash(python Visualize_all.py)",
       "Bash(python -c ':*)",
-      "Bash(python BGG_Export.py)"
+      "Bash(python BGG_Export.py)",
+      "Bash(wc:*)"
     ]
   }
 }

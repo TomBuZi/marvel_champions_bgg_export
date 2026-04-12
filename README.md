@@ -30,7 +30,7 @@ Both `BGG_SESSION_ID` and `BGG_PASSWORD` (the encrypted value) can be found in y
 
 ### GitHub Actions + GitHub Pages
 
-The workflow in `.github/workflows/update.yml` runs every Monday at 06:00 UTC (and on manual trigger). It fetches fresh BGG data, builds `docs/index.html`, and commits it back to the repository. GitHub Pages then serves that file automatically.
+The workflow in `.github/workflows/update.yml` runs every 15 minutes. It first performs a lightweight BGG check (`check_bgg_changes.py`) that fetches only page 1 of the API to compare total play count and the most recent play ID against the stored state in `bgg_state.json`. The full data fetch and page rebuild only runs when a change is detected (or on manual/push triggers). GitHub Pages then serves the rebuilt `docs/index.html` automatically.
 
 **One-time setup:**
 
@@ -62,6 +62,12 @@ python Visualize2.py       # Hero × Aspect matrix
 python Visualize3.py       # Hero × Villain matrix / Sunburst
 python Visualize4.py       # Scenario × Modulars Sunburst / matrix
 python Visualize5.py       # Campaign timeline
+python Visualize6.py       # Sortable plays table (all individual plays)
+```
+
+**3. Check for BGG changes without a full data fetch (used by the GitHub Actions workflow):**
+```
+python check_bgg_changes.py
 ```
 
 ---
@@ -199,8 +205,26 @@ Output: `campaigns_timeline.html`
 
 ---
 
+## Visualize6.py — Sortable Plays Table
+
+Full chronological list of all individual plays. Columns: Datum, Held(en), Szenario, Ergebnis. Click any column header to sort ascending/descending. Plays marked as "not in stats" (`nowinstats=1`) are visually dimmed. The result column is colour-coded: green for wins, red for losses.
+
+Output: `plays_table.html`
+
+---
+
+## check_bgg_changes.py — Lightweight BGG Change-Check
+
+Fetches only page 1 of the BGG API (~1 second) to read the total play count and the ID of the most recent play. Compares them with the saved state in `bgg_state.json`. Used by the GitHub Actions workflow to skip the full data fetch when nothing changed.
+
+`bgg_state.json` is updated by `BGG_Export.py` after a successful full fetch.
+
+---
+
 ## Visualize_all.py — Combined Page
 
-Builds all five visualizations and assembles them into a single HTML file with a sticky tab bar. Plotly JS is loaded once from CDN. Tabs: Dashboard, Helden × Aspekte, Helden × Schurken, Szenarien × Modulars, Kampagnen.
+Builds all six visualizations and assembles them into a single HTML file with a sticky tab bar. Plotly JS is loaded once from CDN. Tabs: Dashboard, Helden × Aspekte, Helden × Schurken, Szenarien × Modulars, Kampagnen, Alle Partien.
+
+The header shows the build timestamp ("Stand: DD.MM.YYYY HH:MM").
 
 Output: `docs/index.html`

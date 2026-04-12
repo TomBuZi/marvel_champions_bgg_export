@@ -7,8 +7,8 @@ on:
       - '**.py'
       - 'config/**'
   schedule:
-    - cron: '0 6 * * 1'   # Every Monday 06:00 UTC
-  workflow_dispatch:        # Manual trigger from GitHub UI
+    - cron: '*/15 * * * *'   # Alle 15 Minuten
+  workflow_dispatch:          # Manueller Start aus GitHub UI
 
 jobs:
   build:
@@ -28,20 +28,31 @@ jobs:
       - name: Install dependencies
         run: pip install requests pandas plotly scipy
 
-      - name: Fetch BGG data
+      - name: Check for BGG changes
+        id: check_changes
         env:
           BGG_SESSION_ID: ${{ secrets.BGG_SESSION_ID }}
-          BGG_PASSWORD: ${{ secrets.BGG_PASSWORD }}
-          BGG_USERNAME: ${{ secrets.BGG_USERNAME }}
+          BGG_PASSWORD:   ${{ secrets.BGG_PASSWORD }}
+          BGG_USERNAME:   ${{ secrets.BGG_USERNAME }}
+        run: python check_bgg_changes.py
+
+      - name: Fetch BGG data
+        if: steps.check_changes.outputs.changed == 'true' || github.event_name != 'schedule'
+        env:
+          BGG_SESSION_ID: ${{ secrets.BGG_SESSION_ID }}
+          BGG_PASSWORD:   ${{ secrets.BGG_PASSWORD }}
+          BGG_USERNAME:   ${{ secrets.BGG_USERNAME }}
         run: python BGG_Export.py
 
       - name: Build visualizations
+        if: steps.check_changes.outputs.changed == 'true' || github.event_name != 'schedule'
         run: python Visualize_all.py
 
       - name: Commit updated page
+        if: steps.check_changes.outputs.changed == 'true' || github.event_name != 'schedule'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html
-          git diff --staged --quiet || git commit -m "chore: update stats $(date +'%Y-%m-%d')"
+          git add docs/index.html bgg_state.json
+          git diff --staged --quiet || git commit -m "chore: update stats $(date +'%Y-%m-%d %H:%M') [skip ci]"
           git push
