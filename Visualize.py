@@ -160,63 +160,65 @@ def build(mobile=False):
         ), row=r_asp_bar, col=c_asp_bar)
     fig.update_layout(barmode='stack')
 
-    # 6. Spielaktivität über die Zeit
+    # 6. Spielaktivität über die Zeit (umschaltbar: Monatlich / Jährlich / Wöchentlich)
     df_plays['date'] = pd.to_datetime(df_plays['date'], errors='coerce')
-    plays_per_month  = df_plays.resample('ME', on='date').size().reset_index()
-    plays_per_month.columns = ['date', 'count']
 
-    y_hist = plays_per_month['count'].values.astype(float)
-    n_hist = len(y_hist)
+    def compute_period(df, freq, sg_divisor=3):
+        per = df.resample(freq, on='date').size().reset_index()
+        per.columns = ['date', 'count']
+        y = per['count'].values.astype(float)
+        n = len(y)
 
-    raw       = max(n_hist // 3, 9)
-    sg_window = raw if raw % 2 == 1 else raw + 1
-    sg_window = min(sg_window, n_hist if n_hist % 2 == 1 else n_hist - 1)
-    y_smooth  = np.maximum(savgol_filter(y_hist, window_length=sg_window, polyorder=2), 0)
+        if n >= 5:
+            raw = max(n // sg_divisor, 5)
+            w = raw if raw % 2 == 1 else raw + 1
+            w = min(w, n if n % 2 == 1 else n - 1)
+            y_sm = np.maximum(savgol_filter(y, window_length=w, polyorder=2), 0)
+        else:
+            y_sm = y.copy()
 
-    n_fit    = min(12, n_hist)
-    x_fit    = np.arange(n_hist - n_fit, n_hist)
-    coeffs   = np.polyfit(x_fit, y_hist[n_hist - n_fit:], 1)
-    lin      = np.poly1d(coeffs)
+        return per, y_sm
 
-    n_fore     = 6
-    x_fore     = np.arange(n_hist, n_hist + n_fore)
-    y_fore     = np.maximum(lin(x_fore), 0)
-    dates_fore = pd.date_range(plays_per_month['date'].iloc[-1], periods=n_fore + 1, freq='ME')[1:]
+    per_m, sm_m = compute_period(df_plays, 'ME', sg_divisor=3)
+    per_y, sm_y = compute_period(df_plays, 'YE', sg_divisor=2)
+    per_w, sm_w = compute_period(df_plays, 'W',  sg_divisor=6)
 
-    x_link = [plays_per_month['date'].iloc[-1], dates_fore[0]]
-    y_link = [y_smooth[-1], y_fore[0]]
+    n_base = len(fig.data)  # Anzahl Traces vor den Zeit-Traces
 
-    fig.add_trace(go.Scatter(
-        x=plays_per_month['date'], y=plays_per_month['count'],
-        mode='lines+markers', name='Monatliche Spiele',
-        marker=dict(color=MARVEL_RED, size=6),
-        line=dict(color=MARVEL_RED, width=2),
-        hovertemplate='%{x|%b %Y}: %{y} Spiele<extra></extra>',
-        showlegend=False,
-    ), row=r_time, col=c_time)
+    def add_time_traces(per, y_sm, visible, fmt):
+        fig.add_trace(go.Scatter(
+            x=per['date'], y=per['count'],
+            mode='lines+markers',
+            marker=dict(color='#FF8C00', size=6),
+            line=dict(color='#FF8C00', width=1),
+            hovertemplate=f'%{{x|{fmt}}}: %{{y}} Spiele<extra></extra>',
+            showlegend=False, visible=visible,
+        ), row=r_time, col=c_time)
 
-    fig.add_trace(go.Scatter(
-        x=plays_per_month['date'], y=y_smooth,
-        mode='lines', name='Trend',
-        line=dict(color='#FF8C00', width=2, dash='dash'),
-        hovertemplate='%{x|%b %Y} Trend: %{y:.1f}<extra></extra>',
-        showlegend=False,
-    ), row=r_time, col=c_time)
+        fig.add_trace(go.Scatter(
+            x=per['date'], y=y_sm,
+            mode='lines',
+            line=dict(color=MARVEL_RED, width=2.5, dash='dash'),
+            hovertemplate=f'%{{x|{fmt}}} Trend: %{{y:.1f}}<extra></extra>',
+            showlegend=False, visible=visible,
+        ), row=r_time, col=c_time)
 
-    fig.add_trace(go.Scatter(
-        x=x_link, y=y_link,
-        mode='lines', line=dict(color='#FF8C00', width=2, dash='dash'),
-        showlegend=False, hoverinfo='skip',
-    ), row=r_time, col=c_time)
+    add_time_traces(per_m, sm_m, True,  '%b %Y')     # Monatlich (default)
+    add_time_traces(per_y, sm_y, False, '%Y')         # Jährlich
+    add_time_traces(per_w, sm_w, False, '%d.%m.%Y')  # Wöchentlich
 
-    fig.add_trace(go.Scatter(
-        x=dates_fore, y=y_fore,
-        mode='lines+markers', name='Prognose (6 Monate)',
-        line=dict(color='#FF8C00', width=2, dash='dot'),
-        marker=dict(color='#FF8C00', size=5, symbol='circle-open'),
-        hovertemplate='%{x|%b %Y} Prognose: %{y:.1f}<extra></extra>',
-        showlegend=False,
-    ), row=r_time, col=c_time)
+    def make_vis(active_idx):
+        v = [True] * n_base
+        for i in range(3):
+            v.extend([i == active_idx] * 2)
+        return v
+
+    if mobile:
+        btn_x, btn_y = 0.01, 0.135
+        btn_anchor = 'left'
+    else:
+        btn_x, btn_y = 0.565, 0.255
+        btn_anchor = 'left'
 
     # --- Layout ---
     height = 2200 if mobile else 1200
@@ -227,6 +229,27 @@ def build(mobile=False):
         dragmode=False,
         showlegend=False,
         template='plotly_white',
+        updatemenus=[dict(
+            type='buttons',
+            direction='right',
+            x=btn_x,
+            y=btn_y,
+            xanchor=btn_anchor,
+            yanchor='top',
+            pad=dict(r=4, t=4),
+            buttons=[
+                dict(label='Monatlich',    method='update',
+                     args=[{'visible': make_vis(0)}]),
+                dict(label='Jährlich',     method='update',
+                     args=[{'visible': make_vis(1)}]),
+                dict(label='Wöchentlich',  method='update',
+                     args=[{'visible': make_vis(2)}]),
+            ],
+            showactive=True,
+            bgcolor='rgba(240,240,240,0.6)',
+            bordercolor='rgba(180,180,180,0.6)',
+            font=dict(size=11),
+        )],
     )
 
     return fig

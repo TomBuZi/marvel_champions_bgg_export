@@ -137,7 +137,7 @@ Six-chart Plotly dashboard in a 3×2 grid:
 3. **Top 10 Most Played Scenarios** — horizontal bar chart
 4. **Win Rate** — three-way pie (Won / Lost / Ohne Ergebnis)
 5. **Aspect Preference — Top 5 Heroes** — stacked bar chart
-6. **Play Activity Over Time** — monthly line chart with Savitzky-Golay trend curve and 6-month linear forecast
+6. **Play Activity Over Time** — switchable time granularity (Monthly / Yearly / Weekly) via buttons; each view includes a Savitzky-Golay trend curve
 
 Output: `dashboard.html`
 
