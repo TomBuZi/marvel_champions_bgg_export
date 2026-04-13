@@ -180,19 +180,68 @@ def build(mobile=False):
         return per, y_sm
 
     per_m, sm_m = compute_period(df_plays, 'ME', sg_divisor=3)
-    per_y, sm_y = compute_period(df_plays, 'YE', sg_divisor=2)
+    per_y, _    = compute_period(df_plays, 'YS', sg_divisor=2)
     per_w, sm_w = compute_period(df_plays, 'W',  sg_divisor=6)
+
+    # Jährlich: erstes und letztes Jahr auf Ganzjahr hochrechnen
+    EXTRAP_COLOR = '#42A5F5'
+    y_raw_y   = per_y['count'].values.astype(float)
+    y_mod_y   = y_raw_y.copy()
+    mk_col_y  = ['#FF8C00'] * len(per_y)
+    hover_y   = [f'{d.year}: {int(v)} Spiele'
+                 for d, v in zip(per_y['date'], y_raw_y)]
+
+    if len(per_y) >= 1:
+        first_play = df_plays['date'].dropna().min()
+        fy         = per_y['date'].iloc[0].year
+        fy_end     = pd.Timestamp(f'{fy}-12-31')
+        fy_active  = (fy_end - first_play).days + 1
+        fy_total   = 366 if fy % 4 == 0 else 365
+        y_mod_y[0] = round(y_raw_y[0] * fy_total / fy_active)
+        mk_col_y[0] = EXTRAP_COLOR
+        hover_y[0]  = (f'{fy}: {int(y_mod_y[0])} Spiele '
+                       f'(hochgerechnet, Basis: {int(y_raw_y[0])} Partien in {fy_active} Tagen)')
+
+    if len(per_y) > 1:
+        today      = pd.Timestamp.today().normalize()
+        ly         = per_y['date'].iloc[-1].year
+        ly_start   = per_y['date'].iloc[-1]
+        ly_elapsed = (today - ly_start).days + 1
+        ly_total   = 366 if ly % 4 == 0 else 365
+        y_mod_y[-1] = round(y_raw_y[-1] * ly_total / ly_elapsed)
+        mk_col_y[-1] = EXTRAP_COLOR
+        hover_y[-1]  = (f'{ly}: {int(y_mod_y[-1])} Spiele '
+                        f'(hochgerechnet, Basis: {int(y_raw_y[-1])} Partien in {ly_elapsed} Tagen)')
+
+    # Ausgleichskurve auf hochgerechneten Werten berechnen
+    n_y = len(y_mod_y)
+    if n_y >= 5:
+        rw = max(n_y // 2, 5)
+        wy = rw if rw % 2 == 1 else rw + 1
+        wy = min(wy, n_y if n_y % 2 == 1 else n_y - 1)
+        sm_y = np.maximum(savgol_filter(y_mod_y, window_length=wy, polyorder=2), 0)
+    else:
+        sm_y = y_mod_y.copy()
 
     n_base = len(fig.data)  # Anzahl Traces vor den Zeit-Traces
 
-    def add_time_traces(per, y_sm, visible, fmt):
+    def add_time_traces(per, y_sm, visible, fmt,
+                        y_override=None, point_colors=None, hover_texts=None):
+        y_plot = y_override if y_override is not None else per['count'].values.astype(float)
+        mk_color = point_colors if point_colors is not None else '#FF8C00'
+        if hover_texts is not None:
+            hover_kw = dict(text=hover_texts,
+                            hovertemplate='%{text}<extra></extra>')
+        else:
+            hover_kw = dict(hovertemplate=f'%{{x|{fmt}}}: %{{y}} Spiele<extra></extra>')
+
         fig.add_trace(go.Scatter(
-            x=per['date'], y=per['count'],
+            x=per['date'], y=y_plot,
             mode='lines+markers',
-            marker=dict(color='#FF8C00', size=6),
+            marker=dict(color=mk_color, size=6),
             line=dict(color='#FF8C00', width=1),
-            hovertemplate=f'%{{x|{fmt}}}: %{{y}} Spiele<extra></extra>',
             showlegend=False, visible=visible,
+            **hover_kw,
         ), row=r_time, col=c_time)
 
         fig.add_trace(go.Scatter(
@@ -203,9 +252,10 @@ def build(mobile=False):
             showlegend=False, visible=visible,
         ), row=r_time, col=c_time)
 
-    add_time_traces(per_m, sm_m, True,  '%b %Y')     # Monatlich (default)
-    add_time_traces(per_y, sm_y, False, '%Y')         # Jährlich
-    add_time_traces(per_w, sm_w, False, '%d.%m.%Y')  # Wöchentlich
+    add_time_traces(per_m, sm_m, True,  '%b %Y')
+    add_time_traces(per_y, sm_y, False, '%Y',
+                    y_override=y_mod_y, point_colors=mk_col_y, hover_texts=hover_y)
+    add_time_traces(per_w, sm_w, False, '%d.%m.%Y')
 
     def make_vis(active_idx):
         v = [True] * n_base
