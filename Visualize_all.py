@@ -29,10 +29,6 @@ print("Baue Dashboard (Desktop) ...")
 fig1d = Visualize.build(mobile=False)
 print("Baue Dashboard (Mobile) ...")
 fig1m = Visualize.build(mobile=True)
-print("Baue Helden \u00d7 Schurken ...")
-fig3 = Visualize3.build()
-print("Baue Szenarien \u00d7 Modulars ...")
-fig4 = Visualize4.build()
 print("Baue Kampagnen ...")
 fig5 = Visualize5.build()
 print("Baue HTML-Tabellen ...")
@@ -46,14 +42,7 @@ print("Alle Visualisierungen gebaut.")
 # --- Plotly HTML-Fragmente rendern ---
 div1d = fig1d.to_html(full_html=False, include_plotlyjs='cdn', config=PLOTLY_CONFIG)
 div1m = fig1m.to_html(full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
-div3  = fig3.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
-div4  = fig4.to_html (full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
 div5  = fig5.to_html (full_html=False, include_plotlyjs=False,  config={'responsive': False, 'scrollZoom': True})
-
-# Viz4: Baumansicht-Höhe für mobile JS übergeben
-import pandas as pd
-_sc_count = len(pd.read_csv('marvel_champions_scenario_modular_combos.csv', sep=';')['scenario'].unique())
-ic_height_js = max(950, _sc_count * 52)
 
 nav_buttons = "\n    ".join(
     f'<button onclick="showTab({i})">{label}</button>'
@@ -230,7 +219,7 @@ html = f"""<!DOCTYPE html>
     .gh-btn-save:hover {{ background: #e62429; border-color: #e62429; }}
 
     /* ── Viz3+Viz4+Viz5-Switch immer sichtbar (ersetzt Plotly-updatemenus) ── */
-    #viz3-switch, #viz4-switch, #viz5-switch {{ display: flex; }}
+    #viz5-switch {{ display: flex; }}
 
     /* ── Standard: HTML-Tabelle/Zusammenfassung gezeigt, Plotly-Chart versteckt ── */
     .viz-plotly {{ display: none; }}
@@ -238,6 +227,7 @@ html = f"""<!DOCTYPE html>
 
     /* ── Kampagnen-Zeitstrahl: horizontales Scrollen ── */
     #viz5-plotly {{ overflow-x: auto; }}
+
 
     /* ── Mobile: Responsive-Anpassungen ── */
     @media (max-width: 768px) {{
@@ -271,25 +261,14 @@ html = f"""<!DOCTYPE html>
     {table2_html}
   </div>
 
-  <!-- Tab 2: Helden × Schurken (Plotly + mobile HTML-Tabelle) -->
+  <!-- Tab 2: Helden × Schurken (HTML-Tabelle) -->
   <div class="tab-content" id="tab-hero_villain">
-    <div class="mobile-switch" id="viz3-switch">
-      <button data-view="table"    onclick="mobileSwitchView('viz3','table',this)">Kreuztabelle</button>
-      <button data-view="sunburst" onclick="mobileSwitchView('viz3','sunburst',this)">Sunburst</button>
-    </div>
-    <div class="viz-plotly" id="viz3-plotly">{div3}</div>
-    <div class="viz-table"  id="viz3-table">{table3_html}</div>
+    {table3_html}
   </div>
 
   <!-- Tab 3: Szenarien × Modulars (Plotly + mobile HTML-Tabelle) -->
   <div class="tab-content" id="tab-scenario_modulars">
-    <div class="mobile-switch" id="viz4-switch">
-      <button data-view="table"       onclick="mobileSwitchView('viz4','table',this)">Kreuztabelle</button>
-      <button data-view="sunburst"    onclick="mobileSwitchView('viz4','sunburst',this)">Sunburst</button>
-      <button data-view="baumansicht" onclick="mobileSwitchView('viz4','baumansicht',this)">Baumansicht</button>
-    </div>
-    <div class="viz-plotly" id="viz4-plotly">{div4}</div>
-    <div class="viz-table"  id="viz4-table">{table4_html}</div>
+    {table4_html}
   </div>
 
   <!-- Tab 4: Kampagnen (Plotly-Zeitstrahl + mobile HTML-Zusammenfassung) -->
@@ -324,19 +303,14 @@ html = f"""<!DOCTYPE html>
 
   <script>
     var TAB_LABELS    = {tab_labels_js};
-    var VIZ4_IC_HEIGHT = {ic_height_js};
 
     // ── Deep-Link-Hashes ──
     var TAB_HASHES = ['Dashboard', 'Helden-Aspekte', 'Helden-Schurken', 'Szenarien-Modulars', 'Kampagnen', 'Alle-Partien'];
-    var VIZ_TAB    = {{'viz3': 2, 'viz4': 3, 'viz5': 4}};
+    var VIZ_TAB    = {{'viz5': 4}};
     var VIEW_HASHES = {{
-        'viz3': {{'table': 'Kreuztabelle', 'sunburst': 'Sunburst'}},
-        'viz4': {{'table': 'Kreuztabelle', 'sunburst': 'Sunburst', 'baumansicht': 'Baumansicht'}},
         'viz5': {{'table': 'Zusammenfassung', 'timeline': 'Zeitstrahl'}}
     }};
     var VIEW_FROM_HASH = {{
-        'viz3': {{'Kreuztabelle': 'table', 'Sunburst': 'sunburst'}},
-        'viz4': {{'Kreuztabelle': 'table', 'Sunburst': 'sunburst', 'Baumansicht': 'baumansicht'}},
         'viz5': {{'Zusammenfassung': 'table', 'Zeitstrahl': 'timeline'}}
     }};
 
@@ -436,21 +410,6 @@ html = f"""<!DOCTYPE html>
         var plotDiv = plotEl.querySelector('.plotly-graph-div');
         if (plotDiv && window.Plotly) {{
           var restyle = null, relayout = null;
-          if (vizId === 'viz3') {{
-            // traces: [0]=heatmap, [1]=sunburst
-            restyle  = {{visible: [false, true]}};
-            relayout = {{'title.text': 'Helden \u2192 Szenarien \u2192 Helden',
-                         height: 850, margin: {{l:10,r:10,t:100,b:10}}}};
-          }} else if (vizId === 'viz4' && view === 'sunburst') {{
-            // viz4 traces: [0]=sunburst, [1]=heatmap, [2]=icicle
-            restyle  = {{visible: [true, false, false]}};
-            relayout = {{'title.text': 'Szenarien \u00d7 Modularkombinationen',
-                         height: 850, margin: {{l:10,r:10,t:60,b:10}}}};
-          }} else if (vizId === 'viz4') {{
-            restyle  = {{visible: [false, false, true]}};
-            relayout = {{'title.text': 'Szenarien \u2192 Modulars \u2192 Helden',
-                         height: VIZ4_IC_HEIGHT, margin: {{l:10,r:10,t:60,b:10}}}};
-          }}
           // viz5: Timeline hat nur eine Ansicht, kein restyle nötig
           if (restyle) Plotly.update(plotDiv, restyle, relayout);
           Plotly.Plots.resize(plotDiv);
@@ -539,7 +498,7 @@ html = f"""<!DOCTYPE html>
     }}
 
     // Standard-Ansicht: Tabelle/Zusammenfassung für alle Switcher aktiv setzen
-    ['viz3', 'viz4', 'viz5'].forEach(function(vizId) {{
+    ['viz5'].forEach(function(vizId) {{
       var sw = document.getElementById(vizId + '-switch');
       if (!sw) return;
       sw.querySelectorAll('button').forEach(function(b) {{

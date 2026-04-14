@@ -151,7 +151,9 @@ def build():
     heroes    = list(pivot.index)
     scenarios = list(pivot.columns)
 
-    # --- Heatmap-Trace ---
+    row_height = 26
+    fig_height = max(500, len(heroes) * row_height + 150)
+
     z_raw = pivot.values.astype(float)
     z_raw[z_raw == 0] = np.nan
     text = [[str(int(v)) if not np.isnan(v) else '' for v in row] for row in z_raw]
@@ -168,79 +170,13 @@ def build():
         showscale=True,
         colorbar=dict(title='Partien', thickness=15),
         hovertemplate='<b>%{y}</b> vs <b>%{x}</b>: %{customdata} Partien<extra></extra>',
-        visible=False,
     )
 
-    # --- Sunburst-Daten aufbauen: Root → Held → Szenario → Held ---
-    sb_ids     = ['root']
-    sb_labels  = ['Alle Helden']
-    sb_parents = ['']
-    sb_values  = [0]
-    sb_colors  = [0]
-
-    # Level 1: Helden
-    for hero in heroes:
-        hero_total = int(pivot.loc[hero].sum())
-        sb_ids.append(hero)
-        sb_labels.append(f"{hero}  ({hero_total})")
-        sb_parents.append('root')
-        sb_values.append(0)
-        sb_colors.append(hero_total)
-
-    # Level 2: Szenarien unter jedem Helden (nur gespielte)
-    for hero in heroes:
-        for scenario in scenarios:
-            count = int(pivot.loc[hero, scenario])
-            if count > 0:
-                sb_ids.append(f"{hero}|{scenario}")
-                sb_labels.append(f"{scenario}  ({count})")
-                sb_parents.append(hero)
-                sb_values.append(0)
-                sb_colors.append(count)
-
-    # Level 3: Alle Helden, die dasselbe Szenario gespielt haben
-    for hero in heroes:
-        for scenario in scenarios:
-            if int(pivot.loc[hero, scenario]) > 0:
-                for hero2 in heroes:
-                    count2 = int(pivot.loc[hero2, scenario])
-                    if count2 > 0:
-                        sb_ids.append(f"{hero}|{scenario}|{hero2}")
-                        sb_labels.append(f"{hero2}  ({count2})")
-                        sb_parents.append(f"{hero}|{scenario}")
-                        sb_values.append(count2)
-                        sb_colors.append(count2)
-
-    sunburst = go.Sunburst(
-        ids=sb_ids,
-        labels=sb_labels,
-        parents=sb_parents,
-        values=sb_values,
-        branchvalues='remainder',
-        maxdepth=2,
-        domain=dict(x=[0, 1], y=[0, 1]),
-        marker=dict(
-            colors=sb_colors,
-            colorscale='YlOrRd',
-            showscale=False,
-        ),
-        textfont=dict(size=11),
-        insidetextorientation='radial',
-        hovertemplate='<b>%{label}</b><br>%{value} Partien<extra></extra>',
-        visible=True,
-    )
-
-    col_width  = 36
-    row_height = 26
-    fig_width  = max(900, len(scenarios) * col_width + 250)
-    fig_height = max(500, len(heroes)    * row_height + 150)
-
-    fig = go.Figure(data=[heatmap, sunburst])
+    fig = go.Figure(data=[heatmap])
 
     fig.update_layout(
-        title=dict(text='Helden \u2192 Szenarien \u2192 Helden', font=dict(size=16)),
-        autosize=True,
-        height=850,
+        title=dict(text='Helden \u00d7 Szenarien \u2014 Kreuztabelle', font=dict(size=16)),
+        height=fig_height,
         dragmode=False,
         margin=dict(l=10, r=10, t=60, b=10),
     )
