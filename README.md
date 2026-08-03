@@ -126,7 +126,7 @@ Play comments are expected in the format:
 | `modulars.json` | All modular encounter set names |
 | `scenario_modulars.json` | Modulars that are always included automatically for specific scenarios |
 | `scenario_default_modulars.json` | Modulars used when no explicit modular was noted for a scenario |
-| `campaigns.json` | Campaign definitions — maps each campaign name to its ordered list of scenarios |
+| `campaigns.json` | Campaign definitions — a list of scenarios for a sequential campaign, or a `{ "pool": [...], "finale": ... }` object for a pool campaign (random order, variable length) |
 
 ---
 
@@ -190,14 +190,35 @@ Output: `scenario_modular_sunburst.html`
 Gantt-style timeline of all detected campaign attempts.
 
 **Detection logic** (in `BGG_Export.py`):
-- Campaigns are defined in `config/campaigns.json` as ordered scenario lists
+- Campaigns are defined in `config/campaigns.json`. Two shapes are supported, normalised at load time by `_normalize_campaign` into a spec dict (`CAMPAIGN_SPECS`):
+  - **List** → *sequential* campaign (the default): the scenarios must be won one after another in exactly that order.
+  - **Object** with `pool` + `finale` → *pool* campaign (see below).
 - Plays matching campaign scenarios are grouped by hero combination and campaign
-- A new attempt starts whenever the first scenario of a campaign is played; mid-campaign plays without a preceding first-scenario play are ignored (noise filter)
-- Attempts are split if consecutive plays are more than 180 days apart, or if scenario 0 is replayed after progress was made
+- Attempts are split if consecutive plays are more than `GAP_DAYS` (60) days apart
+- An attempt is only exported if at least half of the campaign's scenarios were played **or** a play comment contains `campaign` / `kampagne` (`_qualifies`) — otherwise it counts as an unrelated single scenario
 - **Status** is assigned as:
-  - `completed` — all scenarios won in order
+  - `completed` — campaign finished (sequential: all scenarios won in order; pool: finale won)
+  - `lost` — the last scenario was lost at Expert / Expert II difficulty
   - `in_progress` — last play within 90 days of the most recent play in the dataset
   - `abandoned` — otherwise
+
+**Sequential campaigns** additionally require: a new attempt starts only when the *first* scenario is played (mid-campaign plays without a preceding first-scenario play are ignored as noise), a replay of scenario 0 after progress starts a new attempt, and a forward skip ends the attempt.
+
+**Pool campaigns** (`_segment_pool_campaign`) model a campaign whose scenarios are drawn in random order — currently *Fear no Evil*:
+
+```json
+"Fear no Evil": {
+    "pool":   ["The Getaway", "Protection Racket", "Art Museum Heist",
+               "The Raft Breakout", "Stop the Presses"],
+    "finale": "Kingpin"
+}
+```
+
+- Scenarios are played in **random order** and the number of plays per attempt is **variable** — nothing is counted, and there is no maximum
+- A **won** pool scenario is used up and cannot be played again in the same attempt; a **lost** one may be repeated. Its reappearance is therefore what marks the boundary between two attempts
+- Any pool scenario starts an attempt; a `finale` play without a preceding pool play does not
+- The `finale` scenario ends the attempt when won. A lost finale keeps the attempt open so it can be retried; the next pool play then starts a new attempt
+- Plays are ordered by date, then BGG play id. The scenario's position in the config must not be used as a same-day tiebreaker here, since the order is random
 
 **Timeline view** — horizontal bars (one per attempt), coloured by status. Scatter markers show individual scenario plays: ✓ win, ✗ loss, ○ incomplete.
 

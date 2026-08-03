@@ -35,6 +35,28 @@ SCENARIO_MODULARS         = load_config("scenario_modulars.json")
 SCENARIO_DEFAULT_MODULARS = load_config("scenario_default_modulars.json")
 CAMPAIGNS                 = load_config("campaigns.json")
 
+def _normalize_campaign(spec):
+    """Bringt beide Kampagnenformen aus campaigns.json auf ein einheitliches Spec-Dict.
+
+    Liste  -> sequenzielle Kampagne: die Szenarien werden der Reihe nach gewonnen.
+    Objekt -> Pool-Kampagne: beliebig viele Partien in zufälliger Reihenfolge aus 'pool',
+              danach das 'finale'-Szenario.  Ein gewonnenes Pool-Szenario ist verbraucht
+              und kann im selben Durchlauf nicht erneut gespielt werden.
+    """
+    if isinstance(spec, list):
+        return {"mode": "sequential", "scenarios": spec}
+    pool   = spec["pool"]
+    finale = spec["finale"]
+    return {
+        "mode":      "pool",
+        # Anzeigereihenfolge; scen_list[-1] muss das Finale sein (siehe _classify_incomplete)
+        "scenarios": pool + [finale],
+        "pool":      set(pool),
+        "finale":    finale,
+    }
+
+CAMPAIGN_SPECS = {_name: _normalize_campaign(_spec) for _name, _spec in CAMPAIGNS.items()}
+
 # Nur Schwierigkeitsgrad-Modulars — gelten nicht als echte Modularauswahl
 DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "expert ii"}
 
@@ -661,8 +683,8 @@ if __name__ == "__main__":
 
     # Szenario → Liste der Kampagnen, zu denen es gehört
     _scen_to_campaigns = {}
-    for _camp, _scen_list in CAMPAIGNS.items():
-        for _s in _scen_list:
+    for _camp, _spec in CAMPAIGN_SPECS.items():
+        for _s in _spec["scenarios"]:
             _scen_to_campaigns.setdefault(_s, []).append(_camp)
 
     # (combo, campaign) → Liste von Play-Dicts
@@ -691,6 +713,7 @@ if __name__ == "__main__":
         for _camp in _scen_to_campaigns[_matched]:
             _campaign_plays[(_combo, _camp)].append({
                 "date":       _date,
+                "id":         play.get("id"),
                 "scenario":   _matched,
                 "result":     _res,
                 "comments":   _comments,
@@ -750,14 +773,99 @@ if __name__ == "__main__":
     # Größere Lücken → alter Versuch wird als abgebrochen markiert, neuer beginnt.
     GAP_DAYS = 60
 
+    def _days_since_last(att, play):
+        """Tage zwischen der letzten akzeptierten Partie des Versuchs und play."""
+        try:
+            _prev_dt = _dt.strptime(att["plays"][-1]["date"], "%Y-%m-%d")
+            _play_dt = _dt.strptime(play["date"],             "%Y-%m-%d")
+            return (_play_dt - _prev_dt).days
+        except ValueError:
+            return 0
+
+    def _segment_pool_campaign(combo, camp_name, spec, plays_list):
+        """Versuchserkennung für Pool-Kampagnen (z. B. Fear no Evil).
+
+        Anders als bei sequenziellen Kampagnen gibt es keine feste Reihenfolge und keine
+        feste Partienzahl — es wird daher nichts gezählt.  Die Abgrenzung zweier Durchläufe
+        ergibt sich aus der Spielregel, dass ein gewonnenes Pool-Szenario verbraucht ist:
+        taucht es erneut auf, muss ein neuer Durchlauf begonnen haben.
+        """
+        scen_list = spec["scenarios"]
+        finale    = spec["finale"]
+
+        # Datum, dann Play-ID (Erfassungsreihenfolge) — die Konfig-Reihenfolge wäre hier
+        # als Tiebreaker falsch, da die Szenarien in zufälliger Reihenfolge gespielt werden.
+        plays_list.sort(key=lambda p: (p["date"], int(p["id"] or 0)))
+
+        current       = None
+        won_pool      = set()   # gewonnene Pool-Szenarien → dürfen nicht wiederkehren
+        finale_played = False
+        current_diff  = None
+
+        def _close(status):
+            nonlocal current, won_pool, finale_played, current_diff
+            _finalize_attempt(current, status)
+            if _qualifies(current, scen_list):
+                campaign_attempts.append(current)
+            current       = None
+            won_pool      = set()
+            finale_played = False
+            current_diff  = None
+
+        for play in plays_list:
+            scen      = play["scenario"]
+            is_finale = scen == finale
+            play_diff = play["difficulty"]
+
+            # Laufenden Versuch beenden, wenn er nicht zu dieser Partie passen kann
+            if current is not None:
+                if (_days_since_last(current, play) > GAP_DAYS
+                        or (not is_finale and scen in won_pool)
+                        or (not is_finale and finale_played)):
+                    _close(_classify_incomplete(current, scen_list))
+
+            if current is None:
+                # Ein Finale ohne vorangehenden Durchlauf startet keinen Versuch
+                if is_finale:
+                    continue
+                current      = {"campaign": camp_name, "heroes": list(combo),
+                                "plays": [], "difficulty": play_diff}
+                current_diff = play_diff
+            elif play_diff != current_diff:
+                # Wie im sequenziellen Pfad: abweichende Schwierigkeit wird ignoriert
+                continue
+
+            current["plays"].append(play)
+
+            if is_finale:
+                finale_played = True
+                if play["result"] == "win":
+                    _close("completed")
+                # Niederlage am Finale hält den Versuch offen (Wiederholung möglich)
+            elif play["result"] == "win":
+                won_pool.add(scen)
+
+        if current is not None:
+            try:
+                _last_dt = _dt.strptime(current["plays"][-1]["date"], "%Y-%m-%d")
+            except ValueError:
+                _last_dt = None
+            _still_recent = bool(_max_dt and _last_dt and (_max_dt - _last_dt).days <= 90)
+            _close(_classify_incomplete(current, scen_list, _still_recent))
+
     # State Machine pro (combo, campaign): Plays chronologisch in Versuche aufteilen
     for (combo, camp_name), plays_list in _campaign_plays.items():
+        _spec = CAMPAIGN_SPECS[camp_name]
+        if _spec["mode"] == "pool":
+            _segment_pool_campaign(combo, camp_name, _spec, plays_list)
+            continue
+
         # Sekundärer Sortierschlüssel: Szenario-Index in der Kampagne.
         # BGG liefert bei mehreren Plays am gleichen Tag keine garantierte Reihenfolge;
         # für Kampagnen-Versuche ist die natürliche Szenarioreihenfolge zuverlässiger.
-        _scen_idx_map = {s: i for i, s in enumerate(CAMPAIGNS[camp_name])}
+        _scen_idx_map = {s: i for i, s in enumerate(_spec["scenarios"])}
         plays_list.sort(key=lambda p: (p["date"], _scen_idx_map.get(p["scenario"], 999)))
-        scen_list = CAMPAIGNS[camp_name]
+        scen_list = _spec["scenarios"]
 
         current      = None
         current_idx  = 0     # Index des als Nächstes zu gewinnenden Szenarios
