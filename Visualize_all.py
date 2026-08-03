@@ -17,7 +17,7 @@ BUILD_TIMESTAMP = datetime.now().strftime("%d.%m.%Y %H:%M")
 TAB_LABELS = [
     ("Dashboard",              "dashboard"),
     ("Helden \u00d7 Aspekte",     "hero_aspect"),
-    ("Helden \u00d7 Schurken",    "hero_villain"),
+    ("Helden \u00d7 Szenarien",   "hero_scenarios"),
     ("Szenarien \u00d7 Modulars", "scenario_modulars"),
     ("Kampagnen",              "campaigns"),
     ("Alle Partien",           "all_plays"),
@@ -261,8 +261,8 @@ html = f"""<!DOCTYPE html>
     {table2_html}
   </div>
 
-  <!-- Tab 2: Helden × Schurken (HTML-Tabelle) -->
-  <div class="tab-content" id="tab-hero_villain">
+  <!-- Tab 2: Helden × Szenarien (HTML-Tabelle) -->
+  <div class="tab-content" id="tab-hero_scenarios">
     {table3_html}
   </div>
 
@@ -305,7 +305,7 @@ html = f"""<!DOCTYPE html>
     var TAB_LABELS    = {tab_labels_js};
 
     // ── Deep-Link-Hashes ──
-    var TAB_HASHES = ['Dashboard', 'Helden-Aspekte', 'Helden-Schurken', 'Szenarien-Modulars', 'Kampagnen', 'Alle-Partien'];
+    var TAB_HASHES = ['Dashboard', 'Helden-Aspekte', 'Helden-Szenarien', 'Szenarien-Modulars', 'Kampagnen', 'Alle-Partien'];
     var VIZ_TAB    = {{'viz5': 4}};
     var VIEW_HASHES = {{
         'viz5': {{'table': 'Zusammenfassung', 'timeline': 'Zeitstrahl'}}

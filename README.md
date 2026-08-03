@@ -59,7 +59,7 @@ python Visualize_all.py
 ```
 python Visualize.py        # Dashboard
 python Visualize2.py       # Hero × Aspect matrix
-python Visualize3.py       # Hero × Villain matrix / Sunburst
+python Visualize3.py       # Hero × Scenario matrix / Sunburst
 python Visualize4.py       # Scenario × Modulars Sunburst / matrix
 python Visualize5.py       # Campaign timeline
 python Visualize6.py       # Sortable plays table (all individual plays)
@@ -158,18 +158,20 @@ Output: `hero_aspect_matrix.html`
 
 ---
 
-## Visualize3.py — Hero × Villain Matrix / Sunburst
+## Visualize3.py — Hero × Scenario Matrix / Sunburst
 
 Toggle between two views via buttons:
 
 **Kreuztabelle** — Heatmap of heroes (rows) × scenarios (columns). Scenarios appear in `scenarios.json` order; heroes alphabetically. Colour scale: YlOrRd.
+
+The matrix is **complete**: every hero from `heroes.json` (dual identities folded via `hero_aliases.json`) and every scenario from `scenarios.json` is shown, including those with no plays at all — an empty row or column makes visible what is still unplayed. Both axes are the union of config and data, so a name that appears only in the CSVs is never dropped. Cells with 0 stay blank.
 
 **Sunburst** — Three-level radial chart:
 - Ring 1: Heroes (sized by total plays)
 - Ring 2: Scenarios played by that hero
 - Ring 3 (click to reveal): All heroes who played the same scenario, sized by their play count for it
 
-Output: `hero_villain_matrix.html`
+Output: `hero_scenario_matrix.html`
 
 ---
 
@@ -180,6 +182,8 @@ Toggle between two views via buttons:
 **Sunburst** — Scenario → modular combination groups. Click a scenario to zoom in and see the distribution of all modular combinations used. Klick to zoom back out.
 
 **Kreuztabelle** — Heatmap of scenarios (rows) × individual modulars (columns). Modular combinations are exploded into single entries and counts summed, so each cell shows how often a specific modular appeared in a specific scenario. Column order: Standard → Expert → remaining modulars alphabetically.
+
+The matrix is **complete**: every scenario from `scenarios.json` and every modular from `modulars.json` is shown, including those with no plays at all. Both axes are the union of config and data — note that a few modulars (e.g. `Hope Summers`, `Prelates`) are only ever counted via `scenario_modulars.json` / `scenario_default_modulars.json` and are missing from `modulars.json`; the union keeps them from being dropped. Cells with 0 stay blank.
 
 Output: `scenario_modular_sunburst.html`
 
@@ -246,7 +250,9 @@ Fetches only page 1 of the BGG API (~1 second) to read the total play count and 
 
 ## Visualize_all.py — Combined Page
 
-Builds all six visualizations and assembles them into a single HTML file with a sticky tab bar. Plotly JS is loaded once from CDN. Tabs: Dashboard, Helden × Aspekte, Helden × Schurken, Szenarien × Modulars, Kampagnen, Alle Partien.
+Builds all six visualizations and assembles them into a single HTML file with a sticky tab bar. Plotly JS is loaded once from CDN. Tabs: Dashboard, Helden × Aspekte, Helden × Szenarien, Szenarien × Modulars, Kampagnen, Alle Partien.
+
+Only the Dashboard and Kampagnen tabs embed Plotly figures (`build()`); the cross-table tabs use the sortable HTML tables (`build_table_html()`). The `build()` heatmaps in `Visualize2/3/4.py` are therefore only rendered when those scripts are run standalone.
 
 The header shows the build timestamp ("Stand: DD.MM.YYYY HH:MM").
 

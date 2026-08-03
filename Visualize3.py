@@ -11,17 +11,30 @@ def load_config(filename):
     with open(os.path.join(CONFIG_DIR, filename), encoding="utf-8") as f:
         return json.load(f)
 
-SCENARIOS = load_config("scenarios.json")  # Reihenfolge beibehalten
+SCENARIOS    = load_config("scenarios.json")  # Reihenfolge beibehalten
+HEROES       = load_config("heroes.json")
+HERO_ALIASES = load_config("hero_aliases.json")
+
+# Kanonische Heldennamen (Dual-Identity-Aliase zusammengefasst)
+ALL_HEROES = {HERO_ALIASES.get(h, h) for h in HEROES}
 
 
 def _load_pivot():
+    """Vollständige Matrix: alle Helden × alle Szenarien, auch ohne Partien.
+
+    Nicht gespielte Helden bzw. Szenarien bleiben als leere Zeile/Spalte sichtbar,
+    damit erkennbar ist, was noch offen ist.  Die Achsen sind die Vereinigung aus
+    Konfiguration und Daten, damit nichts verloren geht, was in den CSVs steht,
+    aber (noch) nicht konfiguriert ist.
+    """
     df = pd.read_csv('heroes_scenarios.csv', sep=';')
-    df = df[df['Count'] > 0]
     pivot = df.pivot_table(index='Hero', columns='Scenario', values='Count', aggfunc='sum', fill_value=0)
-    scenario_cols = [s for s in SCENARIOS if s in pivot.columns]
+
+    scenario_cols = list(SCENARIOS) + [s for s in pivot.columns if s not in SCENARIOS]
     pivot = pivot.reindex(columns=scenario_cols, fill_value=0)
-    pivot = pivot[pivot.sum(axis=1) > 0]
-    pivot = pivot.sort_index(ascending=True)
+
+    hero_rows = sorted(ALL_HEROES | set(pivot.index))
+    pivot = pivot.reindex(index=hero_rows, fill_value=0)
     return pivot
 
 
@@ -186,7 +199,7 @@ def build():
 
 if __name__ == '__main__':
     fig = build()
-    output = 'hero_villain_matrix.html'
+    output = 'hero_scenario_matrix.html'
     fig.write_html(output, include_plotlyjs='cdn', full_html=True)
     print(f'Gespeichert als: {output}')
     webbrowser.open(f'file:///{os.path.abspath(output)}')

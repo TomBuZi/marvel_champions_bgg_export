@@ -17,7 +17,7 @@ python Visualize_all.py
 # Build individual visualizations (each opens in browser)
 python Visualize.py        # Dashboard
 python Visualize2.py       # Hero × Aspect heatmap
-python Visualize3.py       # Hero × Villain heatmap + Sunburst toggle
+python Visualize3.py       # Hero × Scenario heatmap + Sunburst toggle
 python Visualize4.py       # Scenario × Modulars Sunburst + heatmap toggle
 ```
 

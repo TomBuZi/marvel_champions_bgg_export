@@ -12,6 +12,7 @@ def load_config(filename):
         return json.load(f)
 
 SCENARIOS = load_config("scenarios.json")
+MODULARS  = load_config("modulars.json")
 
 _DIFFICULTY_ORDER = ["Standard", "Standard II", "Standard III", "Expert", "Expert II"]
 _DIFFICULTY_RANK  = {m.lower(): i for i, m in enumerate(_DIFFICULTY_ORDER)}
@@ -34,6 +35,14 @@ def _heat_color(v, max_v):
 
 
 def _load_heatmap_pivot():
+    """Vollständige Matrix: alle Szenarien × alle Modulars, auch ohne Partien.
+
+    Nicht gespielte Szenarien bzw. Modulars bleiben als leere Zeile/Spalte sichtbar,
+    damit erkennbar ist, was noch offen ist.  Die Achsen sind die Vereinigung aus
+    Konfiguration und Daten: einige Modulars werden nur über
+    scenario_modulars.json / scenario_default_modulars.json gezählt und stehen
+    nicht in modulars.json — sie dürfen nicht wegfallen.
+    """
     df = pd.read_csv('marvel_champions_scenario_modular_combos.csv', sep=';')
     rows = []
     for _, row in df.iterrows():
@@ -42,10 +51,11 @@ def _load_heatmap_pivot():
     df_exp = pd.DataFrame(rows)
     df_exp = df_exp.groupby(['scenario', 'modular'])['count'].sum().reset_index()
     pivot  = df_exp.pivot_table(index='scenario', columns='modular', values='count', fill_value=0)
-    scenario_rows = [s for s in SCENARIOS if s in pivot.index]
+
+    scenario_rows = list(SCENARIOS) + [s for s in pivot.index if s not in SCENARIOS]
     pivot = pivot.reindex(index=scenario_rows, fill_value=0)
-    pivot = pivot[pivot.sum(axis=1) > 0]
-    modular_cols = sorted(pivot.columns.tolist(), key=_modular_sort_key)
+
+    modular_cols = sorted(set(MODULARS) | set(pivot.columns), key=_modular_sort_key)
     pivot = pivot.reindex(columns=modular_cols, fill_value=0)
     return pivot
 
@@ -122,21 +132,7 @@ def build_table_html():
 
 
 def build():
-    df = pd.read_csv('marvel_champions_scenario_modular_combos.csv', sep=';')
-
-    rows = []
-    for _, row in df.iterrows():
-        for mod in row['modulars'].split(' + '):
-            rows.append({'scenario': row['scenario'], 'modular': mod.strip(), 'count': row['count']})
-    df_exp = pd.DataFrame(rows)
-    df_exp = df_exp.groupby(['scenario', 'modular'])['count'].sum().reset_index()
-
-    pivot = df_exp.pivot_table(index='scenario', columns='modular', values='count', fill_value=0)
-    scenario_rows = [s for s in SCENARIOS if s in pivot.index]
-    pivot = pivot.reindex(index=scenario_rows, fill_value=0)
-    pivot = pivot[pivot.sum(axis=1) > 0]
-    modular_cols = sorted(pivot.columns.tolist(), key=_modular_sort_key)
-    pivot = pivot.reindex(columns=modular_cols, fill_value=0)
+    pivot = _load_heatmap_pivot()
 
     z_raw = pivot.values.astype(float)
     z_raw[z_raw == 0] = np.nan
