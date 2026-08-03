@@ -97,6 +97,8 @@ Play comments are expected in the format:
 - **Default modulars** (`scenario_default_modulars.json`): added when only difficulty indicators (Standard / Expert) or nothing at all was noted
 - `Standard` is always counted if no other difficulty marker was found
 - Deduplication via a shared `matched_in_comments` set prevents double-counting
+- Leading separators and punctuation (`+ , ! ? . : ;`) are skipped between modulars, so a scenario noted with punctuation in the comment (`Stop the Presses!` for the scenario `Stop the Presses`) does not leave a bogus token
+- Keywords in `MODULAR_NOISE_WORDS` (`Campaign`, `Kampagne`) are skipped silently instead of being reported as unrecognised modulars — they may appear before the `-` separator (`... The Owl Campaign - lost`)
 
 ### Output files
 

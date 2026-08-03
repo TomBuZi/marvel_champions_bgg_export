@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import requests
 import xml.etree.ElementTree as ET
 import csv
@@ -36,6 +37,9 @@ CAMPAIGNS                 = load_config("campaigns.json")
 
 # Nur Schwierigkeitsgrad-Modulars — gelten nicht als echte Modularauswahl
 DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "expert ii"}
+
+# Schlagwörter im Szenariofeld, die keine Modulars sind (z. B. "... The Owl Campaign - lost")
+MODULAR_NOISE_WORDS = {"campaign", "kampagne"}
 
 # Gewünschte Reihenfolge der Schwierigkeitsgrade in Modularkombinationen
 _DIFFICULTY_ORDER = ["Standard", "Standard II", "Standard III", "Expert", "Expert II"]
@@ -353,8 +357,10 @@ if __name__ == "__main__":
         counted_this_play   = []      # Originalnamen in Reihenfolge der Zählung
 
         while scenario_clean:
-            # Führende Trennzeichen (Leerzeichen, +, Komma) überspringen
-            scenario_clean = re.sub(r'^[\s+,]+', '', scenario_clean)
+            # Führende Trennzeichen (Leerzeichen, +, Komma, Satzzeichen) überspringen.
+            # Satzzeichen deckt Szenarien ab, die im Kommentar mit "!" o. Ä. notiert sind
+            # (z. B. "Stop the Presses!" bei Szenarioname "Stop the Presses").
+            scenario_clean = re.sub(r'^[\s+,!?.:;]+', '', scenario_clean)
             if not scenario_clean:
                 break
 
@@ -366,7 +372,10 @@ if __name__ == "__main__":
                 # Erstes Wort nicht erkannt → einzeln melden, nächstes Wort versuchen
                 m = re.match(r'(\S+)(.*)', scenario_clean, re.DOTALL)
                 if m:
-                    unknown_modulars.append((play["date"], m.group(1), play["comments"]))
+                    word = m.group(1)
+                    # Schlagwörter wie "Campaign" überspringen, ohne sie zu melden
+                    if word.strip('!?.:;,').lower() not in MODULAR_NOISE_WORDS:
+                        unknown_modulars.append((play["date"], word, play["comments"]))
                     scenario_clean = m.group(2)
                 else:
                     break
@@ -861,13 +870,21 @@ if __name__ == "__main__":
 
     # --- UNBEKANNTE EINTRÄGE --- #
 
+    def _safe_print(line):
+        """Druckt auch auf Konsolen ohne UTF-8 (Windows cp1252) ohne Abbruch."""
+        try:
+            print(line)
+        except UnicodeEncodeError:
+            enc = sys.stdout.encoding or "ascii"
+            print(line.encode(enc, errors="replace").decode(enc, errors="replace"))
+
     def _print_unknowns(label, entries):
         if entries:
-            print(f"{label} ({len(entries)}):")
+            _safe_print(f"{label} ({len(entries)}):")
             for date, value, comment in sorted(entries):
-                print(f"  {date}  \"{value}\"  →  {comment}")
+                _safe_print(f"  {date}  \"{value}\"  ->  {comment}")
         else:
-            print(f"{label} (0): keine")
+            _safe_print(f"{label} (0): keine")
 
     print("\n=== UNBEKANNTE / FEHLENDE EINTRÄGE ===")
     _print_unknowns("Plays ohne Held",          plays_no_hero)
