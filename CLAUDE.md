@@ -60,5 +60,8 @@ Each `Visualize*.py` exposes a `build()` function returning a `go.Figure`. The `
 | `scenarios.json` | Canonical display order used in all visualizations |
 | `scenario_modulars.json` | `{ scenario: [modular, ...] }` — always auto-included |
 | `scenario_default_modulars.json` | `{ scenario: [modular, ...] }` — used when only difficulty or nothing was noted |
+| `non_modulars.json` | Names counted via the two files above that are **not** modular encounter sets — hidden in the Szenarien × Modulars cross-table only |
 
 Adding a new hero: add the name to `heroes.json`. If it's a dual-identity, also add the bare form and an entry in `hero_aliases.json`.
+
+Note that `count_modular` writes via `modular_counts.get(mod, 0) + 1`, so any name in `scenario_modulars.json` / `scenario_default_modulars.json` silently creates a new statistics entry even if it is absent from `modulars.json` — a typo there produces a phantom modular rather than an error.

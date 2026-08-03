@@ -14,6 +14,10 @@ def load_config(filename):
 SCENARIOS = load_config("scenarios.json")
 MODULARS  = load_config("modulars.json")
 
+# Kartensets, die pro Szenario mitgezählt werden, aber keine echten Modulars sind
+# (szenariospezifische Sets aus den Kampagnenboxen) — in der Kreuztabelle ausgeblendet.
+NON_MODULARS = set(load_config("non_modulars.json"))
+
 _DIFFICULTY_ORDER = ["Standard", "Standard II", "Standard III", "Expert", "Expert II"]
 _DIFFICULTY_RANK  = {m.lower(): i for i, m in enumerate(_DIFFICULTY_ORDER)}
 
@@ -38,10 +42,10 @@ def _load_heatmap_pivot():
     """Vollständige Matrix: alle Szenarien × alle Modulars, auch ohne Partien.
 
     Nicht gespielte Szenarien bzw. Modulars bleiben als leere Zeile/Spalte sichtbar,
-    damit erkennbar ist, was noch offen ist.  Die Achsen sind die Vereinigung aus
-    Konfiguration und Daten: einige Modulars werden nur über
-    scenario_modulars.json / scenario_default_modulars.json gezählt und stehen
-    nicht in modulars.json — sie dürfen nicht wegfallen.
+    damit erkennbar ist, was noch offen ist.  Die Spalten sind die Vereinigung aus
+    modulars.json und den Daten, abzüglich non_modulars.json: manches wird über
+    scenario_modulars.json / scenario_default_modulars.json mitgezählt, ohne ein
+    echtes Modular zu sein.
     """
     df = pd.read_csv('marvel_champions_scenario_modular_combos.csv', sep=';')
     rows = []
@@ -55,7 +59,8 @@ def _load_heatmap_pivot():
     scenario_rows = list(SCENARIOS) + [s for s in pivot.index if s not in SCENARIOS]
     pivot = pivot.reindex(index=scenario_rows, fill_value=0)
 
-    modular_cols = sorted(set(MODULARS) | set(pivot.columns), key=_modular_sort_key)
+    modular_cols = sorted((set(MODULARS) | set(pivot.columns)) - NON_MODULARS,
+                          key=_modular_sort_key)
     pivot = pivot.reindex(columns=modular_cols, fill_value=0)
     return pivot
 

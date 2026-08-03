@@ -124,6 +124,7 @@ Play comments are expected in the format:
 | `aspects.json` | Recognised aspect names |
 | `scenarios.json` | All scenario names in canonical display order |
 | `modulars.json` | All modular encounter set names |
+| `non_modulars.json` | Card sets counted per scenario that are **not** modulars — excluded from the Szenarien × Modulars cross-table |
 | `scenario_modulars.json` | Modulars that are always included automatically for specific scenarios |
 | `scenario_default_modulars.json` | Modulars used when no explicit modular was noted for a scenario |
 | `campaigns.json` | Campaign definitions — a list of scenarios for a sequential campaign, or a `{ "pool": [...], "finale": ... }` object for a pool campaign (random order, variable length) |
@@ -183,7 +184,11 @@ Toggle between two views via buttons:
 
 **Kreuztabelle** — Heatmap of scenarios (rows) × individual modulars (columns). Modular combinations are exploded into single entries and counts summed, so each cell shows how often a specific modular appeared in a specific scenario. Column order: Standard → Expert → remaining modulars alphabetically.
 
-The matrix is **complete**: every scenario from `scenarios.json` and every modular from `modulars.json` is shown, including those with no plays at all. Both axes are the union of config and data — note that a few modulars (e.g. `Hope Summers`, `Prelates`) are only ever counted via `scenario_modulars.json` / `scenario_default_modulars.json` and are missing from `modulars.json`; the union keeps them from being dropped. Cells with 0 stay blank.
+The matrix is **complete**: every scenario from `scenarios.json` and every modular from `modulars.json` is shown, including those with no plays at all. Cells with 0 stay blank.
+
+Columns are `modulars.json` ∪ (names found in the data) − `non_modulars.json`:
+- The **union** guards against silently dropping a name that the scenario configs count but `modulars.json` does not list.
+- **`non_modulars.json`** removes card sets that are tracked per scenario but are not modular encounter sets (e.g. `Prelates`, `S.H.I.E.L.D. Executive Board`). They are still counted in `marvel_champions_modular_stats.csv` and appear in the combination strings — only this cross-table hides them.
 
 Output: `scenario_modular_sunburst.html`
 
