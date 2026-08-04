@@ -42,7 +42,11 @@ print("Alle Visualisierungen gebaut.")
 # --- Plotly HTML-Fragmente rendern ---
 div1d = fig1d.to_html(full_html=False, include_plotlyjs='cdn', config=PLOTLY_CONFIG)
 div1m = fig1m.to_html(full_html=False, include_plotlyjs=False,  config=PLOTLY_CONFIG)
-div5  = fig5.to_html (full_html=False, include_plotlyjs=False,  config={'responsive': False, 'scrollZoom': True})
+div5  = fig5.to_html (full_html=False, include_plotlyjs=False,
+                      div_id=Visualize5.PLOT_DIV_ID, config=Visualize5.TIMELINE_CONFIG)
+
+viz5_div_id  = Visualize5.PLOT_DIV_ID
+viz5_zoom_js = Visualize5.zoom_js()
 
 nav_buttons = "\n    ".join(
     f'<button onclick="showTab({i})">{label}</button>'
@@ -226,7 +230,14 @@ html = f"""<!DOCTYPE html>
     .viz-table  {{ display: block; }}
 
     /* ── Kampagnen-Zeitstrahl: horizontales Scrollen ── */
-    #viz5-plotly {{ overflow-x: auto; }}
+    /* overflow liegt auf dem inneren Container, damit die Hinweiszeile beim
+       horizontalen Scrollen stehen bleibt */
+    #viz5-scroll {{ overflow-x: auto; overflow-y: hidden; }}
+    .viz-hint {{
+      padding: 6px 12px; font-size: 12px; color: #555;
+      background: #f7f7f7; border-bottom: 1px solid #e0e0e0;
+    }}
+    .viz-hint b {{ color: #16213e; }}
 
 
     /* ── Mobile: Responsive-Anpassungen ── */
@@ -277,7 +288,16 @@ html = f"""<!DOCTYPE html>
       <button data-view="table"    onclick="mobileSwitchView('viz5','table',this)">Zusammenfassung</button>
       <button data-view="timeline" onclick="mobileSwitchView('viz5','timeline',this)">Zeitstrahl</button>
     </div>
-    <div class="viz-plotly" id="viz5-plotly">{div5}</div>
+    <div class="viz-plotly" id="viz5-plotly">
+      <div class="viz-hint">
+        <b>Ziehen</b>: Zeitachse verschieben &middot;
+        <b>Strg</b> oder <b>Shift</b> + Mausrad: Zeitachse spreizen bzw. stauchen &middot;
+        Klick auf die Beschriftung links: zum Versuch springen &middot;
+        Klick auf einen Balken: auf den Versuch zoomen &middot;
+        Doppelklick: ganze Historie
+      </div>
+      <div id="viz5-scroll">{div5}</div>
+    </div>
     <div class="viz-table"  id="viz5-table">{table5_html}</div>
   </div>
 
@@ -303,6 +323,26 @@ html = f"""<!DOCTYPE html>
 
   <script>
     var TAB_LABELS    = {tab_labels_js};
+    var VIZ5_DIV      = '{viz5_div_id}';
+
+    // ── Kampagnen-Zeitstrahl ──
+    // Der Zeitstrahl hat eine feste Leinwand (Breite UND Höhe), Plotly.Plots.resize() darf ihn
+    // deshalb nicht anfassen: die Funktion löscht layout.width/height, sobald nur eines von
+    // beiden gesetzt ist, und schaltet auf autosize gegen einen Container ohne Höhe um.
+    // Stattdessen wird der Plot beim ersten Sichtbarwerden einmal per Plotly.redraw() neu
+    // gezeichnet — das behält die Maße und repariert die Textmaße, die beim newPlot im
+    // display:none-Container als 0 gemessen wurden. try/catch, damit eine API-Änderung nicht
+    // den restlichen Script-Block abbricht (Plotly.Plots.redraw existiert z.B. nicht).
+    function viz5Reveal() {{
+      var div = document.getElementById(VIZ5_DIV);
+      if (!div || !window.Plotly || div.offsetParent === null) return;
+      try {{
+        // Breite an den Container anpassen — beim newPlot lag der Div in einem
+        // display:none-Container und hatte Breite 0
+        if (window.viz5Fit) window.viz5Fit();
+        if (!div._viz5drawn) {{ div._viz5drawn = 1; Plotly.redraw(div); }}
+      }} catch (e) {{ }}
+    }}
 
     // ── Deep-Link-Hashes ──
     var TAB_HASHES = ['Dashboard', 'Helden-Aspekte', 'Helden-Szenarien', 'Szenarien-Modulars', 'Kampagnen', 'Alle-Partien'];
@@ -378,9 +418,9 @@ html = f"""<!DOCTYPE html>
       // Plotly resize nur für sichtbare Divs
       var panel = document.querySelectorAll('.tab-content')[n];
       panel.querySelectorAll('.plotly-graph-div').forEach(function(div) {{
-        if (window.Plotly && div.offsetParent !== null) {{
-          Plotly.Plots.resize(div);
-        }}
+        if (!window.Plotly || div.offsetParent === null) return;
+        if (div.id === VIZ5_DIV) {{ viz5Reveal(); }}     // feste Maße, kein Resize
+        else {{ Plotly.Plots.resize(div); }}
       }});
     }}
 
@@ -412,7 +452,8 @@ html = f"""<!DOCTYPE html>
           var restyle = null, relayout = null;
           // viz5: Timeline hat nur eine Ansicht, kein restyle nötig
           if (restyle) Plotly.update(plotDiv, restyle, relayout);
-          Plotly.Plots.resize(plotDiv);
+          if (plotDiv.id === VIZ5_DIV) {{ viz5Reveal(); }}   // feste Maße, kein Resize
+          else {{ Plotly.Plots.resize(plotDiv); }}
         }}
       }}
       // Hash aktualisieren
@@ -505,6 +546,11 @@ html = f"""<!DOCTYPE html>
         b.classList.toggle('active', b.getAttribute('data-view') === 'table');
       }});
     }});
+
+    // ── Zeitachsen-Zoom des Kampagnen-Zeitstrahls (aus Visualize5.zoom_js) ──
+    // Bewusst VOR der Navigation registriert: die Handler dürfen nicht davon abhängen,
+    // dass showTab/mobileSwitchView fehlerfrei durchlaufen.
+    {viz5_zoom_js}
 
     // Hash-basierte Navigation beim Laden
     var _initHash = window.location.hash.slice(1);

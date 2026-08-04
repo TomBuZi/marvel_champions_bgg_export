@@ -231,7 +231,60 @@ Gantt-style timeline of all detected campaign attempts.
 
 **Timeline view** — horizontal bars (one per attempt), coloured by status. Scatter markers show individual scenario plays: ✓ win, ✗ loss, ○ incomplete.
 
-**Zusammenfassung (summary) view** — mobile-friendly HTML table grouped by campaign, with per-attempt rows showing heroes, date range, play count, inline scenario icons, and status.
+*Geometry* — the canvas is **as wide as the window**. `fitWidth()` sets `layout.width` to the container's `clientWidth` on first reveal and on every window resize (floor: `MIN_CANVAS_W` = 900 px, below which `#viz5-scroll` scrolls again); `DEFAULT_CANVAS_W` is only the pre-measurement fallback and the width of the standalone file. That keeps the hero column permanently visible and removes the horizontal scrollbar — with a canvas wider than the window, scrolling drags the row labels out of view too, since they are part of the same SVG. The height is derived exactly from the row count: `MARGIN_TOP + MARGIN_BOTTOM + ROW_PITCH * n` (22 px per attempt → 990 px for 40 attempts).
+
+The axis **bounds** run from the first campaign to **the day the page was built**, with `X_PAD_DAYS` (30) of air at each end so the first and last entry do not sit flush against the border. It never reaches further into the future than that buffer. `xaxis.minallowed` / `xaxis.maxallowed` pin those bounds for *every* interaction, so neither the modebar's zoom-out nor dragging can pull the axis into empty future years. If the CSV ever contains a date beyond today, `build()` prints a warning and extends the axis instead of silently cutting the data off.
+
+Both axes get an **explicit `range`** instead of `autorange`. This is not cosmetic: `go.Scatter` reports its extremes as `padded`, which makes Plotly reserve **5 % of the axis length at *both* ends**. On the y axis that produced ~85 px of dead space above the first and below the last row (the zebra bands stop at `±0.5`, so the strip was visibly white); on the x axis it wasted ~3.5 months per side. `yaxis.range=[n-0.5, -0.5]` is descending, which replaces `autorange="reversed"` — the two must not be combined, `autorange` would win.
+
+The **initial** range is the last `INITIAL_MONTHS` (12) months, not the whole history. At full range there is by definition nothing to pan — dragging would look broken. Double click shows everything.
+
+*Interaction* — `yaxis.fixedrange=True` confines every gesture to the time axis, and since the canvas equals the window there is a single zoom axis: the date range.
+
+| Gesture | Effect |
+|---|---|
+| **Strg/Shift + mouse wheel** | stretch/compress the time axis; the instant under the cursor keeps its pixel position |
+| plain mouse wheel | scrolls the page (deliberately *not* captured) |
+| drag | pan the time axis horizontally |
+| click on the label column | jump to that attempt, **keeping** the current zoom level |
+| click on a bar or a scenario marker | zoom in on that attempt |
+| double click | show the whole history |
+
+`moveByPixels()` still scrolls `#viz5-scroll` first and only passes the unused remainder on to the date range, and `scrollInto()` centres a clicked attempt in the window. Both are no-ops while the canvas fits the window; they only matter below `MIN_CANVAS_W`. Keep them: with a canvas wider than the window, moving *only* the range is silently dead whenever the range is already full.
+
+**Panning is implemented here, not by Plotly** (`dragmode=False`). Plotly's own pan clamps the two axis ends *independently* against `minallowed`/`maxallowed`: at a boundary one end stops while the other keeps moving, so the drag silently **zooms** (measured: 2213 → 1953 days in a single drag). Since the default view shows the full range, *every* drag hits a boundary immediately — only a window strictly inside the bounds pans cleanly, which is why the bug survives a careless test. `setRange()` clamps span-preserving instead, so a drag stops at the border without changing the zoom.
+
+The pan handlers listen to **pointer events on `window` in the capture phase**, which matters twice over. Capture-on-window runs before anything Plotly attaches to its drag surfaces, so `stopPropagation()` cannot disable it. And pointer events are the primary input: per the Pointer Events spec, a `preventDefault()` on `pointerdown` suppresses the *derived* mouse events, so handlers bound to `mousedown`/`mousemove` can silently never fire even though the drag is happening. For the same reason `onDown()` must **not** call `preventDefault()` itself — that killed Plotly's own click detection and with it the bar-click zoom. Text selection during a drag is suppressed with `user-select: none` instead.
+
+Two consequences of `dragmode=False`:
+- Plotly no longer suppresses the click that ends a drag, so a pan would additionally fire `plotly_click` and zoom to whatever bar it ended on. A shared `dragged` flag (set once the pointer moves > 4 px) gates *every* click handler.
+- The DOM `dblclick` never reaches the graph div — Plotly swallows it — but `plotly_doubleclick` still fires, even with `config.doubleClick = False`. The reset lives in that handler. Note that two `Plotly.relayout` calls issued back to back race and the second one is lost, so anything that must change together has to go into one call.
+
+The corner and edge draggers (`.nwdrag`, `.swdrag`, `.ewdrag`, …) are additionally switched off with `pointer-events: none`: with a fixed y axis they are all **one-sided x-zoom handles** sitting directly on the plot border — `.nwdrag` is a 20 × 20 px square right where the label column meets the plot area.
+
+`modeBarButtonsToRemove` drops every axis button (`zoom2d`, `pan2d`, `zoomIn2d`, `zoomOut2d`, `autoScale2d`). They would bypass both the span-preserving clamp and `MIN_ZOOM_DAYS`, e.g. zooming below a single day.
+
+`MIN_ZOOM_DAYS = 30` is not an arbitrary limit: Plotly aims for ~100 px per tick, so a full-width plot (~1300–3000 px) wants 13–30 ticks, and any span below ~30 days makes it fall back to **sub-day ticks**. BGG plays carry no time of day, so hour labels would be invented precision.
+
+`FULL` (the outer bound used by every clamp) is derived **once** from `xaxis.minallowed` / `maxallowed`, not lazily from the current range. Deriving it lazily lets a pan or a modebar zoom that happens *before* the first scripted interaction freeze that momentary window in as "full", after which the clamps trap the view inside it.
+
+The label-column click is suppressed when the mouse moved more than 4 px between `mousedown` and `click`, so a pan that happens to end over the labels does not also trigger a jump.
+
+
+The label column is clickable because the bars are frequently only 1–2 px wide. The row is derived from the mouse position via `yaxis.p2d()`, *not* from the label text — identical labels occur several times (three attempts read "The Rise of Red Skull — Spider-Woman (Standard)"). The `[start, end]` spans are read back out of the bar traces' `customdata`, so there is no second copy of the data to keep in sync.
+
+The wheel/click handlers live in `zoom_js()` (module-level `_ZOOM_JS`), so `Visualize_all.py` and the standalone HTML share one implementation. Notes for maintainers:
+- `config.scrollZoom` stays **off** — Plotly's own scroll zoom cannot require a modifier key. `dragmode=False` does *not* disable it (Plotly gates scroll zoom only on `scrollZoom` + per-axis `fixedrange`), which is why the wheel used to zoom the whole picture.
+- `config.doubleClick` must never be `"reset+autosize"` and `autoScale2d` must stay out of the modebar: both re-enable `autorange` and bring the 5 % padding back.
+- The wheel listener is registered with `{passive: false}` so `preventDefault()` can suppress the browser's own Ctrl+wheel zoom (and Shift+wheel horizontal scrolling). Shift+wheel reports its delta in `deltaX` in some browsers, hence `e.deltaY || e.deltaX`.
+- `zoomAnchored()` clamps the *span* first and only then derives the left edge from `anchor - frac * span`. Re-centering the clamped span on its midpoint (the earlier version) throws the cursor anchor away as soon as any clamp kicks in. `zoomToSpan()` is the centred variant used for the click-to-zoom.
+- Bars **and** markers carry `customdata=[start, end]`. The markers sit on top of the bars and win the click, so the handler must not test for `type === 'bar'`.
+- `fmt()` formats **local** time components; `toISOString()` would shift the range by the UTC offset on every zoom step.
+- Title and legend are anchored **left** (`x=0`), which also survives the narrow-window case where the canvas is wider than the viewport. The legend carries no `legendgroup`, otherwise Plotly lays the groups out as vertical columns (~95 px tall) that collide with the title.
+
+*Optional gap compression* — `GAP_COMPRESS_DAYS` (default `0` = off). When set to e.g. `60`, `_gap_rangebreaks()` removes play-free stretches from the axis via `xaxis.rangebreaks`, which shrinks the axis from ~2150 to ~790 days and roughly triples the pixels per day. The gaps are computed from the **merged union** of all attempt intervals, so no bar and no marker can fall into a removed window. Trade-off: axis distances are no longer proportional to real time and the year ticks become unevenly spaced.
+
+**Zusammenfassung (summary) view** — mobile-friendly HTML table grouped by campaign, with per-attempt rows showing heroes, date range, play count, inline scenario icons, and status. This is the **default** view of the Kampagnen tab; the timeline is opt-in via the switch.
 
 Output: `campaigns_timeline.html`
 
@@ -260,5 +313,9 @@ Builds all six visualizations and assembles them into a single HTML file with a 
 Only the Dashboard and Kampagnen tabs embed Plotly figures (`build()`); the cross-table tabs use the sortable HTML tables (`build_table_html()`). The `build()` heatmaps in `Visualize2/3/4.py` are therefore only rendered when those scripts are run standalone.
 
 The header shows the build timestamp ("Stand: DD.MM.YYYY HH:MM").
+
+**Kampagnen tab specifics** — the timeline is rendered with a fixed `div_id` (`Visualize5.PLOT_DIV_ID` = `viz5-chart`) and its own config (`Visualize5.TIMELINE_CONFIG`) instead of the page-wide `PLOTLY_CONFIG`. The markup is `#viz5-plotly` → `.viz-hint` (interaction hint, stays put) + `#viz5-scroll` (carries `overflow-x: auto`, which only engages below `MIN_CANVAS_W`). `viz5Reveal()` calls `window.viz5Fit()` (exported by `zoom_js`) so the canvas gets the container width — at `newPlot` time the div sits in a `display:none` container and measures 0. `Visualize5.zoom_js()` is injected into the page's script block through the `{viz5_zoom_js}` placeholder — deliberately **before** the hash navigation, so the handlers do not depend on `showTab`/`mobileSwitchView` completing without error.
+
+`showTab()` and `mobileSwitchView()` skip the timeline when they call `Plotly.Plots.resize()` and call `viz5Reveal()` instead. Reason: `Plots.resize` is a no-op while `layout.width` **and** `layout.height` are both set, but it **deletes both** as soon as only one of them is set, switching the figure to `autosize` against a container that has no defined height. `viz5Reveal()` calls `Plotly.redraw()` once on first reveal (note: `Plotly.Plots.redraw` does not exist — the public API is `Plotly.redraw`), which repairs the text metrics that were measured as 0 while the div was still `display:none`, and which keeps width/height. The Dashboard figures set only `height`, so they keep using `Plots.resize` and stay responsive.
 
 Output: `docs/index.html`
