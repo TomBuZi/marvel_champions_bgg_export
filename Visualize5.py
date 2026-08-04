@@ -61,6 +61,9 @@ DEFAULT_CANVAS_W = 1600
 MIN_CANVAS_W     = 900
 INITIAL_MONTHS   = 12          # Startzeitraum; Doppelklick zeigt die ganze Historie
 ROW_PITCH     = 22             # px pro Versuchszeile
+MARKER_SIZE       = 9          # Szenario-Marker
+MARKER_SIZE_DENSE = 7          # an dichten Tagen, damit die Marker noch auseinandergehen
+DENSE_DAY_PLAYS   = 4          # ab so vielen Partien am selben Tag gilt "dicht"
 MARGIN_LEFT   = 330
 MARGIN_RIGHT  = 25
 MARGIN_TOP    = 72             # Titel + einzeilige horizontale Legende
@@ -369,7 +372,16 @@ def zoom_js(div_id=PLOT_DIV_ID):
 
 
 def _parse_played(raw):
-    """Wandelt das scenarios_played-Feld in eine Liste von Play-Dicts um."""
+    """Wandelt das scenarios_played-Feld in eine Liste von Play-Dicts um.
+
+    Die REIHENFOLGE ist bedeutungstragend: BGG_Export.sort_plays_for_output sortiert das Feld
+    nach Datum, Szenarioreihenfolge der Kampagne und Play-ID (Sieg desselben Szenarios
+    zuletzt). _spread_same_day spreizt in genau dieser Folge auf — hier also nicht umsortieren.
+
+    Das Feldformat bleibt bewusst dreiteilig. Ein viertes Feld (z. B. die Play-ID) würde durch
+    das maxsplit=2 unten still in `result` landen ("win::12345") und erst später als KeyError
+    in RESULT_ICONS/RESULT_COLORS auffallen.
+    """
     if not isinstance(raw, str) or not raw:
         return []
     out = []
@@ -377,6 +389,38 @@ def _parse_played(raw):
         parts = entry.split("::", 2)
         if len(parts) == 3:
             out.append({"date": parts[0], "scenario": parts[1], "result": parts[2]})
+    return out
+
+
+def _spread_same_day(plays):
+    """x-Positionen und Markergrößen der Szenario-Marker.
+
+    BGG erfasst keine Uhrzeit, ohne Aufspreizung liegen alle Partien eines Tages exakt
+    übereinander (real bis zu 5). Die i-te von k Partien eines Tages wird um i/k Tage nach
+    rechts versetzt: die erste bleibt exakt auf ihrem Datum (= linke Kante des Versuchsbalkens),
+    die letzte bei (k-1)/k. Damit bleibt immer mindestens 1/k Tag Luft zum ersten Eintrag des
+    Folgetags — die Marker sind über die Tagesgrenze hinweg gleichmäßig dicht.
+
+    Der Versatz lebt in Datenkoordinaten und ist deshalb zoomabhängig sichtbar: beim
+    Herauszoomen fallen die Marker wieder zusammen. Das ist gewollt, sonst müsste bei jedem
+    Relayout nachgerechnet werden. Weiter aufspreizen als über den Tag ginge nur um den Preis,
+    Partien optisch auf den Folgetag zu schieben.
+
+    Hängt an MIN_ZOOM_DAYS: würde man tiefer als bis zu Tages-Ticks zoomen können, sähe dieser
+    reine Anzeigeversatz wie eine echte Uhrzeit aus.
+
+    Rückgabe: Liste von (x, marker_size), parallel zu plays.
+    """
+    byday = {}
+    for i, p in enumerate(plays):
+        byday.setdefault(p["date"], []).append(i)
+    out = [None] * len(plays)
+    for day, idxs in byday.items():
+        k    = len(idxs)
+        base = pd.Timestamp(day)
+        size = MARKER_SIZE_DENSE if k >= DENSE_DAY_PLAYS else MARKER_SIZE
+        for slot, i in enumerate(idxs):
+            out[i] = (base + pd.Timedelta(days=slot / k), size)
     return out
 
 
@@ -472,10 +516,10 @@ def build():
 
         for _, row in rows.iterrows():
             start = row["start_dt"]
-            end   = row["end_dt"]
-            # Mindestbreite 1 Tag, sonst w\u00e4ren Ein-Tages-Versuche unsichtbar
-            if end == start:
-                end = start + timedelta(days=1)
+            # Der Balken deckt den GANZEN Endtag ab. Sonst ragen die aufgespreizten Marker des
+            # letzten Tages rechts aus ihm heraus (er endete auf end_date 00:00). Ersetzt
+            # zugleich den alten Mindestbreiten-Sonderfall f\u00fcr Ein-Tages-Versuche.
+            bar_end = row["end_dt"] + timedelta(days=1)
 
             plays = _parse_played(row["scenarios_played"])
             scen_lines = [
@@ -497,11 +541,13 @@ def build():
                 f"<br><b>Szenarien:</b><br>" + "<br>".join(scen_lines)
             )
 
-            durations_ms.append((end - start).total_seconds() * 1000.0)
+            durations_ms.append((bar_end - start).total_seconds() * 1000.0)
             ys.append(row["y_pos"])
             bases.append(start)
             hovers.append(hover)
-            spans.append([start.strftime("%Y-%m-%d"), end.strftime("%Y-%m-%d")])
+            # ECHTES Enddatum, nicht die Balkengeometrie: die customdata steuert Klick-Zoom und
+            # Label-Klick (rowSpans im zoom_js), dort soll der reale Zeitraum stehen.
+            spans.append([row["start_date"], row["end_date"]])
 
         fig.add_trace(go.Bar(
             x=durations_ms,
@@ -522,15 +568,18 @@ def build():
         ))
 
     # --- Scatter-Marker: einzelne Szenarien innerhalb jedes Versuchs --- #
-    scatter = {k: {"x": [], "y": [], "text": [], "span": []} for k in RESULT_COLORS}
+    scatter = {k: {"x": [], "y": [], "text": [], "span": [], "size": []} for k in RESULT_COLORS}
 
     for _, row in df.iterrows():
-        plays = _parse_played(row["scenarios_played"])
+        plays  = _parse_played(row["scenarios_played"])
+        spread = _spread_same_day(plays)
         # Zeitraum des Versuchs — die Marker liegen über den Balken und gewinnen den Klick,
-        # also brauchen sie dieselbe customdata für den Klick-Zoom
+        # also brauchen sie dieselbe customdata für den Klick-Zoom. Bewusst die ECHTEN Daten,
+        # nicht die aufgespreizten x-Werte.
         span = [row["start_date"], row["end_date"]]
-        for p in plays:
-            scatter[p["result"]]["x"].append(p["date"])
+        for p, (x, size) in zip(plays, spread):
+            scatter[p["result"]]["x"].append(x)
+            scatter[p["result"]]["size"].append(size)
             scatter[p["result"]]["y"].append(row["y_pos"])
             scatter[p["result"]]["span"].append(span)
             scatter[p["result"]]["text"].append(
@@ -551,7 +600,7 @@ def build():
             mode="markers",
             marker=dict(
                 symbol=RESULT_SYMBOLS[result_key],
-                size=9,
+                size=data["size"],          # pro Punkt: kleiner an dichten Tagen
                 color=RESULT_COLORS[result_key],
                 line=dict(color="white", width=1),
             ),

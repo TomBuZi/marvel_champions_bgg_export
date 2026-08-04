@@ -229,7 +229,24 @@ Gantt-style timeline of all detected campaign attempts.
 - The `finale` scenario ends the attempt when won. A lost finale keeps the attempt open so it can be retried; the next pool play then starts a new attempt
 - Plays are ordered by date, then BGG play id. The scenario's position in the config must not be used as a same-day tiebreaker here, since the order is random
 
+**Display order of `scenarios_played`** — `sort_plays_for_output()` (module level, so it is unit-testable without a BGG fetch) sorts each attempt's plays for the CSV field: date → position of the scenario within the day → play id, and within the **same (day, scenario)** group the **won** play comes last (you lose, retry, win, move on). The win rank sits deliberately *after* the scenario position, which makes `(date, scenario_position)` a prefix of the key so the rank only ever compares plays of the same scenario — in front of it, it would sort losses of *other* scenarios ahead of their wins. Scenario position is the config index for sequential campaigns and, for pool campaigns, the smallest play id of that scenario on that day (the config order carries no meaning there; the anchor also groups repeats so "win last" has a group to refer to).
+
+Two things this must not be confused with:
+
+- It is a pure **output** sort. The two `plays_list.sort()` calls that feed the segmentation state machine must keep their current keys. The sequential one is stable, so within a `(date, scenario_index)` group BGG's descending-id order survives — which makes a won scenario come *first*, advance `current_idx` and let the repeats fall into `if scen_idx < current_idx: continue`. Sorting ascending there would append those repeats instead and inflate `play_count`.
+- The resulting **order in the CSV field is meaningful**: `Visualize5._spread_same_day()` fans same-day plays out in exactly that order, so `_parse_played()` must not re-sort. That is also why the field stays three-part — a fourth field (the play id) would be pulled silently into `result` by its `split("::", 2)`.
+
 **Timeline view** — horizontal bars (one per attempt), coloured by status. Scatter markers show individual scenario plays: ✓ win, ✗ loss, ○ incomplete.
+
+*Same-day plays* — BGG records no time of day, so several plays of one attempt on one date would land on the exact same pixel. That is the normal case, not an edge case: **40 of 79** (attempt, day) pairs hold more than one play, **31 of 40 rows** are affected, and the maximum is **5 plays in one day** (a whole campaign in an evening). `_spread_same_day()` therefore puts the i-th of k plays of a day at `day + i/k`:
+
+- the first play stays exactly on its date, which is where the bar's left edge sits (`base=start`)
+- the last one sits at `(k-1)/k`, so at least `1/k` day of air remains before the next day's first marker — the markers stay evenly dense *across* the day boundary and never slide onto the following day
+- marker size drops from `MARKER_SIZE` (9) to `MARKER_SIZE_DENSE` (7) from `DENSE_DAY_PLAYS` (4) plays a day on, so even the densest days fan out. Plotly takes `marker.size` as a per-point array, so this needs no extra traces.
+
+The offset lives in **data coordinates** and is therefore only visible when zoomed in — at 1660 px window width and 30-day zoom (43.5 px/day) two plays are 21.8 px apart and five are 8.7 px apart, while at the 12-month default view (3.6 px/day) they collapse again. That is deliberate: a pixel-constant offset would have to be recomputed on every relayout, and spreading any wider than one day would misplace plays onto neighbouring dates. This is also why `MIN_ZOOM_DAYS` matters twice over — zooming deeper than day ticks would make this pure display offset look like a real time of day.
+
+The bar runs to `end_date + 1 day` so it covers the **whole** last day; otherwise that day's spread markers stick out to the right of it. That also replaces the old `if end == start` minimum-width special case. The bar's `customdata` keeps the **real** start/end dates — it drives the click-zoom and the label-click (`rowSpans()` in `zoom_js`).
 
 *Geometry* — the canvas is **as wide as the window**. `fitWidth()` sets `layout.width` to the container's `clientWidth` on first reveal and on every window resize (floor: `MIN_CANVAS_W` = 900 px, below which `#viz5-scroll` scrolls again); `DEFAULT_CANVAS_W` is only the pre-measurement fallback and the width of the standalone file. That keeps the hero column permanently visible and removes the horizontal scrollbar — with a canvas wider than the window, scrolling drags the row labels out of view too, since they are part of the same SVG. The height is derived exactly from the row count: `MARGIN_TOP + MARGIN_BOTTOM + ROW_PITCH * n` (22 px per attempt → 990 px for 40 attempts).
 

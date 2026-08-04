@@ -57,6 +57,59 @@ def _normalize_campaign(spec):
 
 CAMPAIGN_SPECS = {_name: _normalize_campaign(_spec) for _name, _spec in CAMPAIGNS.items()}
 
+
+def _play_id(play):
+    """Play-ID als Zahl. BGG liefert sie als String-Attribut, sie kann fehlen."""
+    try:
+        return int(play["id"])
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def sort_plays_for_output(plays, spec):
+    """Anzeigereihenfolge der Partien eines Versuchs für das CSV-Feld scenarios_played.
+
+    Sortiert nach Datum, dann Position des Szenarios innerhalb des Tages, dann Play-ID
+    (aufsteigende ID = später erfasst). Innerhalb DERSELBEN (Tag, Szenario)-Gruppe kommt die
+    gewonnene Partie zuletzt: wer ein Szenario an einem Tag mehrfach spielt, hat es verloren
+    und wiederholt, der Sieg beendet es.
+
+    Der Sieg-Rang steht bewusst NACH der Szenario-Position. Damit ist (date, scen_pos) ein
+    Präfix des Schlüssels und der Rang wird nur zwischen Partien derselben Gruppe überhaupt
+    verglichen. Stünde er davor, sortierte er Niederlagen *fremder* Szenarien vor die Siege:
+        Rang vor Szenario-Position:  A/loss, B/loss, A/win   (falsch)
+        Szenario-Position zuerst:    A/loss, A/win,  B/loss  (richtig)
+
+    Szenario-Position je Modus:
+      sequenziell -> Index in der Konfig-Reihenfolge (so gespielt, so angezeigt)
+      pool        -> kleinste Play-ID desselben Szenarios an diesem Tag. Die Konfig-
+                     Reihenfolge ist dort bedeutungslos (freie Szenariowahl), die
+                     Erfassungsreihenfolge ist der einzige Anker. Der Anker gruppiert
+                     zugleich Wiederholungen desselben Szenarios, damit "Sieg zuletzt"
+                     überhaupt eine Gruppe hat, auf die es sich beziehen kann.
+
+    Reine AUSGABE-Sortierung. Die beiden Vorsortierungen der Segmentierung
+    (plays_list.sort(...)) dürfen nicht so umgestellt werden — siehe die Warnungen dort.
+
+    Visualize5.py übernimmt diese Reihenfolge unverändert und spreizt Partien desselben Tages
+    in genau dieser Folge auf; die Reihenfolge im CSV ist also bedeutungstragend.
+    """
+    if spec.get("mode") == "pool":
+        anchor = {}
+        for p in plays:
+            key = (p["date"], p["scenario"])
+            pid = _play_id(p)
+            if key not in anchor or pid < anchor[key]:
+                anchor[key] = pid
+        scen_pos = lambda p: anchor[(p["date"], p["scenario"])]
+    else:
+        idx = {s: i for i, s in enumerate(spec.get("scenarios", []))}
+        scen_pos = lambda p: idx.get(p["scenario"], len(idx))
+
+    return sorted(plays, key=lambda p: (p["date"], scen_pos(p),
+                                        p["result"] == "win", _play_id(p)))
+
+
 # Nur Schwierigkeitsgrad-Modulars — gelten nicht als echte Modularauswahl
 DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "expert ii"}
 
@@ -795,6 +848,8 @@ if __name__ == "__main__":
 
         # Datum, dann Play-ID (Erfassungsreihenfolge) — die Konfig-Reihenfolge wäre hier
         # als Tiebreaker falsch, da die Szenarien in zufälliger Reihenfolge gespielt werden.
+        # NICHT auf die Anzeigereihenfolge (sort_plays_for_output) umstellen: das hier ist die
+        # Eingabe der State Machine, eine Änderung verschiebt Versuchsgrenzen und Status.
         plays_list.sort(key=lambda p: (p["date"], int(p["id"] or 0)))
 
         current       = None
@@ -863,6 +918,13 @@ if __name__ == "__main__":
         # Sekundärer Sortierschlüssel: Szenario-Index in der Kampagne.
         # BGG liefert bei mehreren Plays am gleichen Tag keine garantierte Reihenfolge;
         # für Kampagnen-Versuche ist die natürliche Szenarioreihenfolge zuverlässiger.
+        #
+        # ACHTUNG, keinen Play-ID-Tiebreaker ergänzen: der Sort ist stabil, innerhalb einer
+        # (Datum, Szenario-Index)-Gruppe gilt damit die BGG-Reihenfolge (ID absteigend). Bei
+        # mehrfach gespieltem Szenario kommt so der Sieg zuerst, hebt current_idx und die
+        # Wiederholungen fallen unten in "if scen_idx < current_idx: continue". Aufsteigend
+        # sortiert würden sie stattdessen angehängt und play_count stiege.
+        # Die Anzeigereihenfolge macht sort_plays_for_output erst beim CSV-Schreiben.
         _scen_idx_map = {s: i for i, s in enumerate(_spec["scenarios"])}
         plays_list.sort(key=lambda p: (p["date"], _scen_idx_map.get(p["scenario"], 999)))
         scen_list = _spec["scenarios"]
@@ -953,9 +1015,15 @@ if __name__ == "__main__":
         ])
         for att in campaign_attempts:
             heroes_str = " & ".join(att["heroes"])
+            # Ausgabereihenfolge ist bedeutungstragend: Visualize5 spreizt Partien desselben
+            # Tages in genau dieser Reihenfolge auf. Sortierte Kopie, damit att["plays"]
+            # unangetastet bleibt.
+            _ordered = sort_plays_for_output(
+                att["plays"], CAMPAIGN_SPECS.get(att["campaign"], {})
+            )
             played_str = " | ".join(
                 f'{p["date"]}::{p["scenario"]}::{p["result"]}'
-                for p in att["plays"]
+                for p in _ordered
             )
             writer.writerow([
                 att["campaign"], heroes_str, att.get("difficulty", "Standard"),
