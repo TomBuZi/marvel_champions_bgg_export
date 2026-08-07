@@ -26,6 +26,25 @@ STATUS_LABELS = {
     "lost":        "Verloren",
     "abandoned":   "Abgebrochen",
 }
+# Hinterlegung der Beschriftungsspalte: heller Ton derselben Farbfamilie wie STATUS_COLORS
+# (Material 50 zu deren 800). Flächig gesetzt muss der Ton hell bleiben, sonst erschlägt die
+# 330 px breite Spalte den eigentlichen Zeitstrahl — die Zuordnung trägt die Textfarbe.
+STATUS_BG_COLORS = {
+    "completed":   "#C8E6C9",
+    "in_progress": "#FFECB3",
+    "lost":        "#FFCDD2",
+    "abandoned":   "#E0E0E0",
+}
+# Schriftfarbe der Beschriftung auf dieser Hinterlegung. Bewusst NICHT STATUS_COLORS:
+# auf dem eigenen hellen Ton erreicht keine der vier Balkenfarben den WCAG-AA-Kontrast 4.5
+# (gemessen: 3.81 / 1.68 / 3.99 / 3.49 — Amber auf Amber ist praktisch unlesbar). Die hier
+# gewählten dunkleren Töne derselben Familie liegen bei 5.85 / 6.67 / 4.67 / 7.61.
+STATUS_TEXT_COLORS = {
+    "completed":   "#1B5E20",
+    "in_progress": "#6D4C00",
+    "lost":        "#B71C1C",
+    "abandoned":   "#424242",
+}
 
 RESULT_COLORS = {
     "win":        "#1B5E20",
@@ -475,8 +494,14 @@ def build():
     # Numerische y-Positionen, damit identische Labels (gleicher Kombi, mehrere Versuche)
     # nicht von Plotly zusammengelegt werden
     df["y_pos"] = range(len(df))
+    # Beschriftung in der Statusfarbe. Plotly rendert in Tick-Texten eine HTML-Teilmenge,
+    # darunter <span style="color:...">; eine Farbe je Zeile ginge \u00fcber yaxis.tickfont nicht,
+    # das gilt immer f\u00fcr die ganze Achse.
     tick_text = [
-        f"{row['campaign']} \u2014 {_short_heroes(row['heroes'])} ({row.get('difficulty', 'Standard')})"
+        "<span style='color:{c}'>{t}</span>".format(
+            c=STATUS_TEXT_COLORS.get(row["status"], "#212121"),
+            t=f"{row['campaign']} \u2014 {_short_heroes(row['heroes'])} ({row.get('difficulty', 'Standard')})",
+        )
         for _, row in df.iterrows()
     ]
 
@@ -496,6 +521,25 @@ def build():
             xref="paper", x0=0, x1=1,
             yref="y",     y0=y_min, y1=y_max,
             fillcolor=camp_color[camp],
+            line=dict(width=0),
+            layer="below",
+        ))
+
+    # --- Statusfarbe hinter der Beschriftungsspalte --- #
+    # x läuft in Paper-Einheiten der PLOTFLÄCHE, die Spalte liegt im linken Rand also bei
+    # x < 0. Wie weit, hängt von MARGIN_LEFT im Verhältnis zur Plotbreite ab — und die
+    # Breite setzt fitWidth() im JS bei jeder Fenstergrössenänderung neu. Statt das
+    # nachzuführen reicht ein Wert, der jede zulässige Leinwandbreite unterschreitet:
+    # bei MIN_CANVAS_W (900) ist der Rand 330/545 = 0.61 Paperbreiten, -2 deckt das
+    # mit Reserve ab. Das SVG beschneidet den Überstand an seiner eigenen Kante.
+    # Gemischte Refs (xref="paper", yref="y") landen wie die Zebrastreifen oben in der
+    # ungeclippten Paper-Ebene — mit zwei Achsen-Refs würde Plotly auf die Plotfläche clippen.
+    for _, row in df.iterrows():
+        shapes.append(dict(
+            type="rect",
+            xref="paper", x0=-2, x1=0,
+            yref="y",     y0=row["y_pos"] - 0.5, y1=row["y_pos"] + 0.5,
+            fillcolor=STATUS_BG_COLORS.get(row["status"], "#FFFFFF"),
             line=dict(width=0),
             layer="below",
         ))

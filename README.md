@@ -242,6 +242,14 @@ Two things this must not be confused with:
 
 **Timeline view** — horizontal bars (one per attempt), coloured by status. Scatter markers show individual scenario plays: ✓ win, ✗ loss, ○ incomplete.
 
+*Status colour in the label column* — each row's label sits on a band in its status colour (`STATUS_BG_COLORS`), so the outcome of an attempt is readable without following its bar across the axis. Three details make this work:
+
+- The band is a layout shape with **mixed refs** (`xref="paper"`, `yref="y"`) like the campaign zebra stripes. Plotly only clips a shape to the plot area when *both* refs are axes, so a mixed-ref shape may reach into the margin where the labels live.
+- `x0 = -2` is deliberately far outside the paper. The label column's width in paper units depends on `MARGIN_LEFT` *relative to the plot width*, and `fitWidth()` rewrites that width on every window resize — a fitted value would have to be recomputed each time. At the narrowest allowed canvas (`MIN_CANVAS_W` = 900 px) the margin is `330/545 = 0.61` paper widths, so `-2` covers every case and the SVG clips the overhang at its own edge.
+- The label text is coloured per row via `<span style="color:…">` in `ticktext` (`yaxis.tickfont.color` is per-axis, not per-tick). It uses `STATUS_TEXT_COLORS`, **not** `STATUS_COLORS`: on its own light band none of the four bar colours reaches WCAG AA contrast 4.5 (3.81 / 1.68 / 3.99 / 3.49 — amber on amber is effectively unreadable). The darker shades of the same families reach 5.85 / 6.67 / 4.67 / 7.61. Two of them (`#1B5E20`, `#B71C1C`) are already the win/loss marker colours.
+
+The row-label click still derives its row from `yaxis.p2d()` rather than the label text, so the markup does not affect it.
+
 *Same-day plays* — BGG records no time of day, so several plays of one attempt on one date would land on the exact same pixel. That is the normal case, not an edge case: **40 of 79** (attempt, day) pairs hold more than one play, **31 of 40 rows** are affected, and the maximum is **5 plays in one day** (a whole campaign in an evening). `_spread_same_day()` therefore puts the i-th of k plays of a day at `day + i/k`:
 
 - the first play stays exactly on its date, which is where the bar's left edge sits (`base=start`)
