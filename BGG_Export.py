@@ -36,15 +36,30 @@ SCENARIO_DEFAULT_MODULARS = load_config("scenario_default_modulars.json")
 CAMPAIGNS                 = load_config("campaigns.json")
 
 def _normalize_campaign(spec):
-    """Bringt beide Kampagnenformen aus campaigns.json auf ein einheitliches Spec-Dict.
+    """Bringt die Kampagnenformen aus campaigns.json auf ein einheitliches Spec-Dict.
 
-    Liste  -> sequenzielle Kampagne: die Szenarien werden der Reihe nach gewonnen.
-    Objekt -> Pool-Kampagne: beliebig viele Partien in zufälliger Reihenfolge aus 'pool',
-              danach das 'finale'-Szenario.  Ein gewonnenes Pool-Szenario ist verbraucht
-              und kann im selben Durchlauf nicht erneut gespielt werden.
+    Liste                    -> sequenzielle Kampagne: die Szenarien werden der Reihe nach gewonnen.
+    Objekt mit 'scenarios'   -> ebenfalls sequenziell, nur als Objekt geschrieben, damit
+                                zusätzliche Flags (require_tag) gesetzt werden können.
+    Objekt mit 'pool'        -> Pool-Kampagne: beliebig viele Partien in zufälliger Reihenfolge
+                                aus 'pool', danach das 'finale'-Szenario.  Ein gewonnenes
+                                Pool-Szenario ist verbraucht und kann im selben Durchlauf
+                                nicht erneut gespielt werden.
+
+    'require_tag': nur ausdrücklich markierte Partien (Kommentar enthält 'campaign' bzw.
+    'kampagne', siehe has_campaign_tag) zählen für diese Kampagne. Für Pool-Kampagnen ist
+    das praktisch Pflicht: ohne feste Reihenfolge gibt es kein strukturelles Erkennungs-
+    merkmal, jede freie Partie auf einem Pool-Szenario würde sonst in den laufenden
+    Versuch gezogen.
     """
     if isinstance(spec, list):
-        return {"mode": "sequential", "scenarios": spec}
+        return {"mode": "sequential", "scenarios": spec, "require_tag": False}
+
+    require_tag = bool(spec.get("require_tag"))
+
+    if "pool" not in spec:
+        return {"mode": "sequential", "scenarios": spec["scenarios"], "require_tag": require_tag}
+
     pool   = spec["pool"]
     finale = spec["finale"]
     return {
@@ -53,6 +68,7 @@ def _normalize_campaign(spec):
         "scenarios": pool + [finale],
         "pool":      set(pool),
         "finale":    finale,
+        "require_tag": require_tag,
     }
 
 CAMPAIGN_SPECS = {_name: _normalize_campaign(_spec) for _name, _spec in CAMPAIGNS.items()}
@@ -113,8 +129,16 @@ def sort_plays_for_output(plays, spec):
 # Nur Schwierigkeitsgrad-Modulars — gelten nicht als echte Modularauswahl
 DIFFICULTY_MODULARS = {"standard", "standard ii", "standard iii", "expert", "expert ii"}
 
+# Schlagwörter, mit denen eine Partie im Kommentar als Kampagnen-Partie markiert wird
+CAMPAIGN_TAG_WORDS = ("campaign", "kampagne")
+
 # Schlagwörter im Szenariofeld, die keine Modulars sind (z. B. "... The Owl Campaign - lost")
-MODULAR_NOISE_WORDS = {"campaign", "kampagne"}
+MODULAR_NOISE_WORDS = set(CAMPAIGN_TAG_WORDS)
+
+
+def has_campaign_tag(comments_lower):
+    """True, wenn der (bereits kleingeschriebene) Kommentar die Partie als Kampagnen-Partie markiert."""
+    return any(w in comments_lower for w in CAMPAIGN_TAG_WORDS)
 
 # Gewünschte Reihenfolge der Schwierigkeitsgrade in Modularkombinationen
 _DIFFICULTY_ORDER = ["Standard", "Standard II", "Standard III", "Expert", "Expert II"]
@@ -743,6 +767,9 @@ if __name__ == "__main__":
     # (combo, campaign) → Liste von Play-Dicts
     _campaign_plays = _defaultdict(list)
 
+    # Kampagne → Anzahl verworfener Partien ohne Kampagnen-Markierung (nur bei require_tag)
+    _skipped_untagged = _defaultdict(int)
+
     for play in all_plays:
         _matched = find_longest_prefix_match(play["scenario"].strip(), SCENARIOS)
         if not _matched or _matched not in _scen_to_campaigns:
@@ -763,7 +790,16 @@ if __name__ == "__main__":
 
         _comments = (play.get("comments") or "").lower()
         _diff     = difficulty_from_comments(_comments)
+        _tagged   = has_campaign_tag(_comments)
         for _camp in _scen_to_campaigns[_matched]:
+            # Kampagnen ohne feste Szenarioreihenfolge (require_tag) haben kein strukturelles
+            # Erkennungsmerkmal — dort zählt nur eine ausdrücklich markierte Partie. Der Filter
+            # greift schon hier und nicht erst in _qualifies: eine ungetaggte Partie darf gar
+            # nicht Teil eines Versuchs werden, sonst verschiebt sie Versuchsgrenzen
+            # (GAP_DAYS, won_pool, finale_played) und den play_count.
+            if CAMPAIGN_SPECS[_camp].get("require_tag") and not _tagged:
+                _skipped_untagged[_camp] += 1
+                continue
             _campaign_plays[(_combo, _camp)].append({
                 "date":       _date,
                 "id":         play.get("id"),
@@ -810,17 +846,18 @@ if __name__ == "__main__":
         """Gibt True zurück, wenn der Versuch als Kampagne zählt.
 
         Bedingung: mindestens die Hälfte der Szenarien wurde gespielt (egal ob
-        Sieg oder Niederlage) ODER mindestens ein Play-Kommentar enthält
-        'campaign' bzw. 'kampagne'.  Andernfalls gilt es als Einzel-Szenario
+        Sieg oder Niederlage) ODER mindestens ein Play-Kommentar ist als
+        Kampagnen-Partie markiert.  Andernfalls gilt es als Einzel-Szenario
         ohne Kampagnenbezug und wird aus der Visualisierung ausgeschlossen.
+
+        Bei require_tag-Kampagnen ist die zweite Bedingung immer erfüllt — dort sind
+        ungetaggte Partien schon vorher aussortiert.  Das ist gewollt: ein einzelner
+        markierter Pool-Abend soll als laufender Versuch sichtbar sein.
         """
         unique_played = len(set(p["scenario"] for p in att["plays"]))
         if unique_played >= len(scen_list) / 2:
             return True
-        return any(
-            "campaign" in p.get("comments", "") or "kampagne" in p.get("comments", "")
-            for p in att["plays"]
-        )
+        return any(has_campaign_tag(p.get("comments", "")) for p in att["plays"])
 
     # Zwei Plays gehören zum selben Versuch, wenn sie < GAP_DAYS Tage auseinander liegen.
     # Größere Lücken → alter Versuch wird als abgebrochen markiert, neuer beginnt.
@@ -1032,6 +1069,10 @@ if __name__ == "__main__":
             ])
 
     print(f"Kampagnen-Statistik gespeichert als: {OUTFILE_CAMPAIGNS} ({len(campaign_attempts)} Versuche)")
+
+    # Vergessene Kampagnen-Markierungen sichtbar machen — sonst fehlen die Partien stillschweigend
+    for _camp, _n in _skipped_untagged.items():
+        print(f"  Hinweis: {_camp}: {_n} Partie(n) ohne 'Campaign' im Kommentar übersprungen")
 
     print(f"FERTIG! Datei gespeichert als: {OUTFILE}")
 

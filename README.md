@@ -127,7 +127,7 @@ Play comments are expected in the format:
 | `non_modulars.json` | Card sets counted per scenario that are **not** modulars — excluded from the Szenarien × Modulars cross-table |
 | `scenario_modulars.json` | Modulars that are always included automatically for specific scenarios |
 | `scenario_default_modulars.json` | Modulars used when no explicit modular was noted for a scenario |
-| `campaigns.json` | Campaign definitions — a list of scenarios for a sequential campaign, or a `{ "pool": [...], "finale": ... }` object for a pool campaign (random order, variable length) |
+| `campaigns.json` | Campaign definitions — a list of scenarios for a sequential campaign, or a `{ "pool": [...], "finale": ... }` object for a pool campaign (random order, variable length). The object form also accepts `"require_tag": true`, which makes the `Campaign` / `Kampagne` comment keyword mandatory for that campaign |
 
 ---
 
@@ -199,12 +199,14 @@ Output: `scenario_modular_sunburst.html`
 Gantt-style timeline of all detected campaign attempts.
 
 **Detection logic** (in `BGG_Export.py`):
-- Campaigns are defined in `config/campaigns.json`. Two shapes are supported, normalised at load time by `_normalize_campaign` into a spec dict (`CAMPAIGN_SPECS`):
+- Campaigns are defined in `config/campaigns.json`. Three shapes are supported, normalised at load time by `_normalize_campaign` into a spec dict (`CAMPAIGN_SPECS`):
   - **List** → *sequential* campaign (the default): the scenarios must be won one after another in exactly that order.
+  - **Object** with `scenarios` → also sequential, written as an object so that flags can be added.
   - **Object** with `pool` + `finale` → *pool* campaign (see below).
+- `"require_tag": true` (object form only) makes the campaign **opt-in per play**: only plays whose comment contains `campaign` / `kampagne` (`has_campaign_tag`) are considered for it at all. The filter runs *before* the attempts are built, so an untagged play cannot shift attempt boundaries (`GAP_DAYS`, `won_pool`, `finale_played`) or inflate `play_count`. `BGG_Export.py` prints one line per campaign counting the plays it skipped this way, so a forgotten keyword does not vanish silently.
 - Plays matching campaign scenarios are grouped by hero combination and campaign
 - Attempts are split if consecutive plays are more than `GAP_DAYS` (60) days apart
-- An attempt is only exported if at least half of the campaign's scenarios were played **or** a play comment contains `campaign` / `kampagne` (`_qualifies`) — otherwise it counts as an unrelated single scenario
+- An attempt is only exported if at least half of the campaign's scenarios were played **or** a play comment contains `campaign` / `kampagne` (`_qualifies`) — otherwise it counts as an unrelated single scenario. For a `require_tag` campaign the second condition always holds, so a single tagged evening already shows up as a (running) attempt
 - **Status** is assigned as:
   - `completed` — campaign finished (sequential: all scenarios won in order; pool: finale won)
   - `lost` — the last scenario was lost at Expert / Expert II difficulty
@@ -217,12 +219,14 @@ Gantt-style timeline of all detected campaign attempts.
 
 ```json
 "Fear no Evil": {
-    "pool":   ["The Getaway", "Protection Racket", "Art Museum Heist",
-               "The Raft Breakout", "Stop the Presses"],
-    "finale": "Kingpin"
+    "pool":        ["The Getaway", "Protection Racket", "Art Museum Heist",
+                    "The Raft Breakout", "Stop the Presses"],
+    "finale":      "Kingpin",
+    "require_tag": true
 }
 ```
 
+- `require_tag` is practically **mandatory** here. A sequential campaign recognises itself by its fixed scenario order; a pool campaign has no such structure, so without the keyword *every* play of a pool scenario with the same hero combination would be pulled into the running attempt — including plays that had nothing to do with the campaign. Note that the **finale** needs the keyword too, otherwise the attempt never reaches `completed`
 - Scenarios are played in **random order** and the number of plays per attempt is **variable** — nothing is counted, and there is no maximum
 - A **won** pool scenario is used up and cannot be played again in the same attempt; a **lost** one may be repeated. Its reappearance is therefore what marks the boundary between two attempts
 - Any pool scenario starts an attempt; a `finale` play without a preceding pool play does not
