@@ -9,7 +9,14 @@
       "Bash(python BGG_Export.py)",
       "Bash(wc:*)",
       "Bash(python -c \"import BGG_Export\")",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(git update-index *)",
+      "Bash(git checkout *)",
+      "Bash(git stash *)",
+      "Bash(git pull *)",
+      "Bash(python -c \"import json;d=json.load\\(open\\('.claude/settings.local.json',encoding='utf-8'\\)\\);print\\(len\\(d['permissions']['allow']\\),'Eintraege, valides JSON'\\)\")",
+      "Bash('/c/Program Files \\(x86\\)/Microsoft/Edge/Application/msedge.exe' --headless=new --disable-gpu --no-sandbox --remote-debugging-port=9333 --user-data-dir=C:/Users/Tom/AppData/Local/Temp/claude/C--Repos-marvel-champions-bgg-export/788b3c96-2e69-46a1-9bb7-235b95cd3107/scratchpad/edge-cdp --window-size=1700,1100 about:blank)",
+      "Bash(sleep 4)"
     ]
   }
 }
