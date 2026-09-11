@@ -30,7 +30,7 @@ Both `BGG_SESSION_ID` and `BGG_PASSWORD` (the encrypted value) can be found in y
 
 ### GitHub Actions + GitHub Pages
 
-The workflow in `.github/workflows/update.yml` runs every 15 minutes. It first performs a lightweight BGG check (`check_bgg_changes.py`) that fetches only page 1 of the API to compare total play count and the most recent play ID against the stored state in `bgg_state.json`. The full data fetch and page rebuild only runs when a change is detected (or on manual/push triggers). GitHub Pages then serves the rebuilt `docs/index.html` automatically.
+The workflow in `.github/workflows/update.yml` runs every 15 minutes. It performs a lightweight BGG check (`check_bgg_changes.py`) that compares total play count and the most recent play ID with `bgg_state.json`. A full data fetch and page rebuild runs when these change, on manual/push triggers, or at the first check at least 24 hours after the last full sync. This periodic refresh also picks up edits to older plays, whose IDs and total count stay unchanged. GitHub Pages then serves the rebuilt `docs/index.html` automatically.
 
 **One-time setup:**
 
@@ -89,6 +89,7 @@ Play comments are expected in the format:
 - Longest-prefix-match against the `heroes.json` list
 - Find-all-positions algorithm handles multiple heroes per play and substring overlaps (e.g. She-Hulk / Hulk)
 - Alias mapping (`hero_aliases.json`) normalises bare names to canonical identities (e.g. `Spider-Man` → `Spider-Man * Peter Parker`)
+- Aspect matching considers every occurrence: `Hulk Aggression + Thor Aggression` assigns Aggression to both heroes. Repeating an aspect within one hero's text still counts it only once.
 
 ### Modular matching
 
@@ -329,9 +330,11 @@ Output: `plays_table.html`
 
 ## check_bgg_changes.py — Lightweight BGG Change-Check
 
-Fetches only page 1 of the BGG API (~1 second) to read the total play count and the ID of the most recent play. Compares them with the saved state in `bgg_state.json`. Used by the GitHub Actions workflow to skip the full data fetch when nothing changed.
+Normally fetches only page 1 of the BGG API (~1 second) to compare the total play count and most recent play ID with `bgg_state.json`. At the first check at least 24 hours after `last_full_sync`, requests a full refresh without fetching page 1 separately. This also imports corrected results, heroes, aspects, and modulars on older plays. Updates are therefore eventual, not immediate; their timing depends on the scheduled workflow running successfully.
 
-`bgg_state.json` is updated by `BGG_Export.py` after a successful full fetch.
+`bgg_state.json` is updated by `BGG_Export.py` and includes the UTC timestamp `last_full_sync`. A missing, invalid, timezone-less, or future timestamp forces a full refresh, so existing state files migrate automatically on the next run. The lightweight check never advances this timestamp.
+
+Run the offline regression tests with `python -m unittest discover -s tests -v`.
 
 ---
 

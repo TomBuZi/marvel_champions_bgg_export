@@ -5,6 +5,8 @@ Ruft nur Seite 1 der BGG-API ab (ca. 1 Sek.) und vergleicht
   - Gesamtanzahl der Partien  (total)
   - ID der neuesten Partie    (last_play_id)
 mit dem gespeicherten Stand in bgg_state.json.
+Spätestens nach 24 Stunden wird ein vollständiger Abgleich angefordert,
+damit auch nachträgliche Änderungen an älteren Partien übernommen werden.
 
 Gibt "changed=true/false" als GitHub-Actions-Step-Output aus.
 bgg_state.json wird NICHT von diesem Skript aktualisiert — das
@@ -14,12 +16,26 @@ erledigt BGG_Export.py nach dem vollständigen Datenabruf.
 import json
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 import xml.etree.ElementTree as ET
 import requests
 
 USERNAME = os.environ.get("BGG_USERNAME", "Almecho")
 GAME_ID  = 285774
 STATE_FILE = "bgg_state.json"
+FULL_SYNC_INTERVAL = timedelta(hours=24)
+
+
+def full_sync_due(state, now=None):
+    """Alte States ohne gültigen UTC-Zeitstempel benötigen einen Vollabgleich."""
+    now = now or datetime.now(timezone.utc)
+    try:
+        last_sync = datetime.fromisoformat(state["last_full_sync"])
+        if last_sync.tzinfo is None:
+            return True
+    except (KeyError, TypeError, ValueError):
+        return True
+    return last_sync > now or now - last_sync >= FULL_SYNC_INTERVAL
 
 
 def set_output(name: str, value: str) -> None:
@@ -66,6 +82,12 @@ def load_state():
 
 
 def main():
+    state = load_state()
+    if state is None or full_sync_due(state):
+        print("Vollständiger BGG-Abgleich fällig → Update erforderlich.")
+        set_output("changed", "true")
+        return
+
     print("Prüfe BGG auf neue Partien (Seite 1)...")
     try:
         xml_text = fetch_page1()
@@ -77,12 +99,6 @@ def main():
 
     total, last_id = parse_page1(xml_text)
     print(f"BGG meldet: {total} Partien, neueste ID: {last_id}")
-
-    state = load_state()
-    if state is None:
-        print("Kein gespeicherter State gefunden → Update erforderlich.")
-        set_output("changed", "true")
-        return
 
     stored_total   = state.get("total", -1)
     stored_last_id = str(state.get("last_play_id", ""))

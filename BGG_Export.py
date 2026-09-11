@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 import csv
 import time
 import html
+from datetime import datetime, timezone
 
 try:
     from dotenv import load_dotenv
@@ -604,9 +605,8 @@ if __name__ == "__main__":
         # Aspekte mit Positionen finden
         aspect_positions = []
         for asp in ASPECTS:
-            pos = text_lower.find(asp.lower())
-            if pos != -1:
-                aspect_positions.append((pos, asp))
+            for match in re.finditer(re.escape(asp.lower()), text_lower):
+                aspect_positions.append((match.start(), asp))
 
         aspect_positions.sort()
 
@@ -621,10 +621,10 @@ if __name__ == "__main__":
 
             next_hero_pos = hero_positions[idx + 1][0] if idx + 1 < len(hero_positions) else float('inf')
 
-            possible_aspects = [
+            possible_aspects = list(dict.fromkeys(
                 asp for pos, asp in aspect_positions
                 if hero_pos < pos < next_hero_pos
-            ]
+            ))
 
             if canonical in HERO_DEFAULT_ASPECTS:
                 # Multi-aspect hero: use all found aspects; fall back to defaults if none found
@@ -1080,6 +1080,7 @@ if __name__ == "__main__":
     _state = {
         "total":        total_plays,
         "last_play_id": str(all_plays[0]["id"]) if all_plays else "0",
+        "last_full_sync": datetime.now(timezone.utc).isoformat(),
     }
     with open("bgg_state.json", "w", encoding="utf-8") as _f:
         json.dump(_state, _f)
