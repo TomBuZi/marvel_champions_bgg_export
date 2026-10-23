@@ -12,5 +12,6 @@
         "pool":        ["The Getaway", "Protection Racket", "Art Museum Heist", "The Raft Breakout", "Stop the Presses"],
         "finale":      "Kingpin",
         "require_tag": true
-    }
+    },
+    "Shadowland":               ["Shadows in the Night", "Shadow Labyrinth", "Heart of Shadow"]
 }

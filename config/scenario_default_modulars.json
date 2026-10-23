@@ -53,5 +53,8 @@
     "Art Museum Heist": ["Cops", "The Owl"],
     "The Raft Breakout": ["The Owl", "Tombstone"],
     "Stop the Presses": ["Tombstone", "Tracksuit Mafia"],
-    "Kingpin": ["Tombstone", "Tracksuit Mafia"]
+    "Kingpin": ["Tombstone", "Tracksuit Mafia"],
+    "Shadows in the Night": ["Dark Protégé", "Ninja Swarm"],
+    "Shadow Labyrinth": ["Dark Protégé", "Ninja Swarm", "Deadly Contraptions"],
+    "Heart of Shadow": ["Black Flower", "Ninja Swarm"]
 }
