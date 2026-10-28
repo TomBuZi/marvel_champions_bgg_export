@@ -9,8 +9,10 @@ import runpy
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
+import bgg_parser
 import check_bgg_changes as checker
 
 
@@ -98,6 +100,40 @@ class ChangeCheckTests(unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()):
                 checker.main()
                 output.assert_called_once_with('changed', expected)
+
+
+def _play(comment, players=()):
+    """Eine <play>-Zeile wie von der BGG-API; players = [(userid, color), ...]."""
+    players_xml = ''.join(f'<player userid="{uid}" color="{escape(color)}"/>' for uid, color in players)
+    return ET.fromstring(
+        '<play id="1" date="2026-09-01" quantity="1" length="0" incomplete="0" nowinstats="0">'
+        f'<comments>{escape(comment)}</comments>'
+        + (f'<players>{players_xml}</players>' if players else '') + '</play>')
+
+
+class ParsePlayTests(unittest.TestCase):
+    def test_multiplayer_marks_own_hero_and_adds_missing_teammates(self):
+        parsed = bgg_parser.parse_play(_play(
+            'Echo Protection Silk Protection vs Rhino Bomb Scare Expert Campaign - won',
+            [('0', 'Silk'), ('250203', 'Echo'), ('0', 'Wolverine')]))
+        self.assertEqual([(h['hero'], h['aspects'], h['is_mine']) for h in parsed['heroes']],
+                         [('Echo', ['Protection'], True), ('Silk', ['Protection'], False),
+                          ('Wolverine', [], False)])
+        self.assertEqual(parsed['scenario'], 'Rhino')
+        self.assertEqual(parsed['modulars'], ['Bomb Scare', 'Expert', 'Standard'])
+        self.assertEqual((parsed['difficulty'], parsed['result'], parsed['is_campaign']),
+                         ('Expert', 'win', True))
+        self.assertEqual(parsed['problems'], [])
+
+    def test_solo_heroes_are_all_mine_and_problems_are_reported(self):
+        parsed = bgg_parser.parse_play(_play('Hulk Aggression + Thor Ally vs Nobody - lost',
+                                             [('250203', '')]))
+        self.assertEqual([(h['hero'], h['aspects'], h['is_mine']) for h in parsed['heroes']],
+                         [('Hulk', ['Aggression'], True), ('Thor', ['Precon'], True)])
+        self.assertIsNone(parsed['scenario'])
+        self.assertEqual(parsed['result'], 'loss')
+        self.assertIn("Aspekt nicht erkannt: 'ally'", parsed['problems'])
+        self.assertIn("Szenario nicht erkannt: 'Nobody'", parsed['problems'])
 
 
 if __name__ == '__main__':

@@ -28,6 +28,8 @@ BGG_PASSWORD=...
 
 Both `BGG_SESSION_ID` and `BGG_PASSWORD` (the encrypted value) can be found in your browser cookies after logging in to boardgamegeek.com. `python-dotenv` is optional — if not installed, set the three variables as regular environment variables instead.
 
+Optionally set `BGG_API_TOKEN` to the token of a registered BGG application (https://boardgamegeek.com/applications); it is then sent as `Authorization: Bearer <token>` in addition to the cookies.
+
 ### GitHub Actions + GitHub Pages
 
 The workflow in `.github/workflows/update.yml` runs every 15 minutes. It performs a lightweight BGG check (`check_bgg_changes.py`) that compares total play count and the most recent play ID with `bgg_state.json`. A full data fetch and page rebuild runs when these change, on manual/push triggers, or at the first check at least 24 hours after the last full sync. This periodic refresh also picks up edits to older plays, whose IDs and total count stay unchanged. GitHub Pages then serves the rebuilt `docs/index.html` automatically.
@@ -75,6 +77,8 @@ python check_bgg_changes.py
 ## BGG_Export.py
 
 Fetches all Marvel Champions plays for the configured BGG user via the BGG XML API and produces CSV statistics files.
+
+Fetching and comment parsing live in [`bgg_parser.py`](#bgg_parserpy--shared-parser); `BGG_Export.py` only counts and writes the statistics.
 
 ### Comment format
 
@@ -129,6 +133,21 @@ Play comments are expected in the format:
 | `scenario_modulars.json` | Modulars that are always included automatically for specific scenarios |
 | `scenario_default_modulars.json` | Modulars used when no explicit modular was noted for a scenario |
 | `campaigns.json` | Campaign definitions — a list of scenarios for a sequential campaign, or a `{ "pool": [...], "finale": ... }` object for a pool campaign (random order, variable length). The object form also accepts `"require_tag": true`, which makes the `Campaign` / `Kampagne` comment keyword mandatory for that campaign |
+
+---
+
+## bgg_parser.py — Shared Parser
+
+Module with the BGG fetch and all comment-parsing logic, shared by `BGG_Export.py` and the tracker sync ([mc-tracker-sync](../mc-tracker-sync)), so both recognise heroes, aspects, scenarios and modulars identically.
+
+| Function | Purpose |
+|---|---|
+| `fetch_page(username, game_id, page)` | One page (100 plays) of the XML API; retries on 202/429/5xx with exponential backoff |
+| `extract_play_data(play)` | Flat play record for the CSV export (own hero only in multiplayer plays) |
+| `assign_hero_aspects(hero_text)` | Heroes in text order with their aspects and unrecognised aspect text |
+| `match_scenario_and_modulars(scenario_text)` | Scenario plus modulars in counting order (explicit → default → auto → `Standard` fallback) |
+| `classify_result(play)` | `win` / `loss` / `incomplete` |
+| `parse_play(play)` | Fully resolved play for the sync: **all** heroes (teammates missing from the comment are added from their `color`), `is_mine` per hero, scenario, modulars, difficulty, result, campaign tag and a `problems` list |
 
 ---
 
