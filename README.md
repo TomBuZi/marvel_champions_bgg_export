@@ -6,6 +6,8 @@ Export Marvel Champions board game plays from BoardGameGeek (BGG) and create sta
 
 This project fetches Marvel Champions play data from the BGG XML API, parses structured information from play comments, and generates interactive Plotly visualizations. All four visualizations can be viewed together in a single tabbed HTML page.
 
+The same parsed plays are also mirrored into the [Marvel Champions Tracker](https://marvelchampionstracker.com) by [`tracker_sync/`](tracker_sync/README.md).
+
 ---
 
 ## Setup
@@ -34,10 +36,13 @@ Optionally set `BGG_API_TOKEN` to the token of a registered BGG application (htt
 
 The workflow in `.github/workflows/update.yml` runs every 15 minutes. It performs a lightweight BGG check (`check_bgg_changes.py`) that compares total play count and the most recent play ID with `bgg_state.json`. A full data fetch and page rebuild runs when these change, on manual/push triggers, or at the first check at least 24 hours after the last full sync. This periodic refresh also picks up edits to older plays, whose IDs and total count stay unchanged. GitHub Pages then serves the rebuilt `docs/index.html` automatically.
 
+Whenever the page is rebuilt, a second job (`tracker`) runs the [tracker sync](tracker_sync/README.md). It is a separate job so that a tracker outage never blocks the statistics; the next run catches up. Runs are serialised via `concurrency` so two syncs never write to the tracker at the same time.
+
 **One-time setup:**
 
-1. Add three repository secrets (Settings → Secrets and variables → Actions):
+1. Add five repository secrets (Settings → Secrets and variables → Actions):
    - `BGG_USERNAME`, `BGG_SESSION_ID`, `BGG_PASSWORD`
+   - `TRACKER_EMAIL`, `TRACKER_PASSWORD` (tracker login)
 2. Enable GitHub Pages (Settings → Pages → Source: main branch, `/docs` folder).
 3. Trigger the workflow once manually (Actions tab → Run workflow) to generate the initial page.
 
@@ -70,6 +75,12 @@ python Visualize6.py       # Sortable plays table (all individual plays)
 **3. Check for BGG changes without a full data fetch (used by the GitHub Actions workflow):**
 ```
 python check_bgg_changes.py
+```
+
+**4. Sync plays to the Marvel Champions Tracker** (needs `TRACKER_EMAIL` / `TRACKER_PASSWORD` in `.env`, see [tracker_sync/README.md](tracker_sync/README.md)):
+```
+python tracker_sync/sync.py sync            # dry run
+python tracker_sync/sync.py sync --apply
 ```
 
 ---
@@ -138,7 +149,7 @@ Play comments are expected in the format:
 
 ## bgg_parser.py — Shared Parser
 
-Module with the BGG fetch and all comment-parsing logic, shared by `BGG_Export.py` and the tracker sync ([mc-tracker-sync](../mc-tracker-sync)), so both recognise heroes, aspects, scenarios and modulars identically.
+Module with the BGG fetch and all comment-parsing logic, shared by `BGG_Export.py` and the [tracker sync](tracker_sync/README.md), so both recognise heroes, aspects, scenarios and modulars identically.
 
 | Function | Purpose |
 |---|---|

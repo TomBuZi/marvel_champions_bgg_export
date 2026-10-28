@@ -6,9 +6,15 @@ on:
     paths:
       - '**.py'
       - 'config/**'
+      - 'tracker_sync/mapping.json'
   schedule:
     - cron: '*/15 * * * *'   # Alle 15 Minuten
   workflow_dispatch:          # Manueller Start aus GitHub UI
+
+# Nie zwei Läufe gleichzeitig: parallele Tracker-Syncs könnten Logs doppelt anlegen
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -17,6 +23,8 @@ jobs:
       contents: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    outputs:
+      changed: ${{ steps.check_changes.outputs.changed }}
 
     steps:
       - uses: actions/checkout@v4
@@ -56,3 +64,33 @@ jobs:
           git add docs/index.html bgg_state.json
           git diff --staged --quiet || git commit -m "chore: update stats $(date +'%Y-%m-%d %H:%M') [skip ci]"
           git push
+
+  # Eigener Job: ein Tracker-Fehler hält die Statistik nicht auf; nachgeholt wird beim nächsten Lauf
+  tracker:
+    needs: build
+    if: needs.build.outputs.changed == 'true' || github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r tracker_sync/requirements.txt
+
+      - name: Sync to Marvel Champions Tracker
+        env:
+          BGG_SESSION_ID:   ${{ secrets.BGG_SESSION_ID }}
+          BGG_PASSWORD:     ${{ secrets.BGG_PASSWORD }}
+          BGG_USERNAME:     ${{ secrets.BGG_USERNAME }}
+          TRACKER_EMAIL:    ${{ secrets.TRACKER_EMAIL }}
+          TRACKER_PASSWORD: ${{ secrets.TRACKER_PASSWORD }}
+        run: python tracker_sync/sync.py sync --apply

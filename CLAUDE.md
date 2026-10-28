@@ -19,6 +19,9 @@ python Visualize.py        # Dashboard
 python Visualize2.py       # Hero × Aspect heatmap
 python Visualize3.py       # Hero × Scenario heatmap + Sunburst toggle
 python Visualize4.py       # Scenario × Modulars Sunburst + heatmap toggle
+
+# Mirror BGG plays into the Marvel Champions Tracker (dry run without --apply)
+python tracker_sync/sync.py sync
 ```
 
 Offline regression tests: `python -m unittest discover -s tests -v`. No linter is configured.
@@ -27,7 +30,7 @@ Offline regression tests: `python -m unittest discover -s tests -v`. No linter i
 
 ### Data pipeline
 
-`BGG_Export.py` is the sole data-generation script. It fetches the BGG XML API (paginated), parses play comments in the format `<Hero(es)> vs <Scenario> [Difficulty] [Modular, ...] - <Result>`, and writes 9 CSV files. Fetching and all parsing live in `bgg_parser.py`, which the sibling repo `mc-tracker-sync` imports too — keep its function signatures and `parse_play` result keys stable. All static lists live in `config/*.json` and are loaded at module level of `bgg_parser.py`.
+`BGG_Export.py` is the sole data-generation script. It fetches the BGG XML API (paginated), parses play comments in the format `<Hero(es)> vs <Scenario> [Difficulty] [Modular, ...] - <Result>`, and writes 9 CSV files. Fetching and all parsing live in `bgg_parser.py`, which the tracker sync in `tracker_sync/` imports too — keep its function signatures and `parse_play` result keys stable. All static lists live in `config/*.json` and are loaded at module level of `bgg_parser.py`.
 
 **Key parsing algorithms:**
 - `find_all_hero_positions` + `remove_covered_matches` — finds every hero name in the comment text, then removes matches fully covered by a longer match (solves She-Hulk/Hulk and Spider-Man/Miles Morales overlaps)
@@ -71,3 +74,7 @@ Each `Visualize*.py` exposes a `build()` function returning a `go.Figure`. The `
 Adding a new hero: add the name to `heroes.json`. If it's a dual-identity, also add the bare form and an entry in `hero_aliases.json`.
 
 Note that `BGG_Export.py` counts via `modular_counts.get(mod, 0) + 1`, so any name in `scenario_modulars.json` / `scenario_default_modulars.json` silently creates a new statistics entry even if it is absent from `modulars.json` — a typo there produces a phantom modular rather than an error.
+
+### Tracker sync
+
+`tracker_sync/` mirrors the parsed plays into marvelchampionstracker.com (unofficial API, see `tracker_client.py`); its docs are in German in `tracker_sync/README.md`. Each tracker log carries a `[BGG #<id>]` marker in its notes, and every run is a full diff — logs without the marker are never touched. Its modules use flat imports and `bgg_source.py` puts the repo root on `sys.path` to import `bgg_parser`, so run it as `python tracker_sync/sync.py` from the repo root. In `update.yml` it runs as the separate `tracker` job after `build`; the workflow-level `concurrency` group must stay, otherwise overlapping runs can create duplicate logs. Tracker names that differ from BGG names go in `tracker_sync/mapping.json`, not in `config/`.

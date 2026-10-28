@@ -1,0 +1,19 @@
+{
+    "heroes": {},
+    "villains": {
+        "The Sinister Six": "Sinister Six"
+    },
+    "modulars": {
+        "Doomsday Chair": "The Doomsday Chair",
+        "Hellfire": "Hellfire Club",
+        "All vs All": "All Versus All",
+        "Dark Protégé": null
+    },
+    "missions": {
+        "Art Museum Heist": "Art Museum Heist",
+        "Stop the Presses": "Stop the Presses!",
+        "The Getaway": "The Getaway",
+        "The Raft Breakout": "The Raft Breakout",
+        "Protection Racket": null
+    }
+}
